@@ -17,8 +17,8 @@ DARK_THEME = {
     "pressed_color": QColor(240, 240, 240)   # Еще светлее
 }
 
-class CustomScrollBar(QScrollBar):
-    """Кастомный скроллбар с настраиваемой прозрачностью"""
+class TransparentScroller(QScrollBar):
+    """Прозрачный скроллер с настраиваемой прозрачностью"""
     
     def __init__(self, orientation, bg_alpha=30, handle_alpha=80, 
                  hover_alpha=120, pressed_alpha=160,
@@ -59,6 +59,18 @@ class CustomScrollBar(QScrollBar):
         
         # Инициализируем цвета
         self._initColors()
+        
+        # Кэширование расчётов ползунка
+        self._cached_slider_rect = None
+        self._cache_dirty = True
+        
+        # Соединяем сигналы, которые влияют на геометрию ползунка
+        self.valueChanged.connect(self._invalidateCache)
+        self.rangeChanged.connect(self._invalidateCache)
+    
+    def _invalidateCache(self):
+        """Отмечает кэш как устаревший"""
+        self._cache_dirty = True
     
     def _initColors(self):
         """Инициализирует цвета скроллбара на основе темы"""
@@ -135,6 +147,10 @@ class CustomScrollBar(QScrollBar):
     
     def _calculateSliderRect(self):
         """Вычисляет прямоугольник ползунка скроллбара"""
+        # Проверяем, можно ли использовать кэшированное значение
+        if not self._cache_dirty and self._cached_slider_rect is not None:
+            return self._cached_slider_rect
+            
         # Получаем основные параметры скроллбара
         minimum = self.minimum()
         maximum = self.maximum()
@@ -143,7 +159,10 @@ class CustomScrollBar(QScrollBar):
         
         # Если нет диапазона для прокрутки, занимаем всю доступную область
         if maximum <= minimum:
-            return self.rect().adjusted(2, 2, -2, -2)
+            rect = self.rect().adjusted(2, 2, -2, -2)
+            self._cached_slider_rect = rect
+            self._cache_dirty = False
+            return rect
         
         # Вычисляем размер ползунка в процентах от общего размера скроллбара
         # с учетом видимой области (pageStep)
@@ -165,7 +184,7 @@ class CustomScrollBar(QScrollBar):
             available_height = height - handle_height
             handle_pos = int(available_height * position_ratio)
             
-            return QRect(
+            rect = QRect(
                 margin, 
                 handle_pos, 
                 width - 2 * margin, 
@@ -177,12 +196,17 @@ class CustomScrollBar(QScrollBar):
             available_width = width - handle_width
             handle_pos = int(available_width * position_ratio)
             
-            return QRect(
+            rect = QRect(
                 handle_pos, 
                 margin, 
                 handle_width, 
                 height - 2 * margin
             )
+        
+        # Кэшируем результат
+        self._cached_slider_rect = rect
+        self._cache_dirty = False
+        return rect
     
     def mousePressEvent(self, event):
         """Обработка нажатия мыши"""
@@ -227,6 +251,12 @@ class CustomScrollBar(QScrollBar):
         self._mouse_over = False
         self.update()
 
+    def resizeEvent(self, event):
+        """Обработка изменения размера"""
+        super().resizeEvent(event)
+        # Инвалидируем кэш при изменении размера
+        self._invalidateCache()
+
 
 class OverlayScrollArea(QScrollArea):
     """Класс области прокрутки с накладываемыми пользовательскими скроллбарами"""
@@ -255,14 +285,14 @@ class OverlayScrollArea(QScrollArea):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
         # Создаем вертикальный скроллбар
-        self._v_scroll = CustomScrollBar(Qt.Orientation.Vertical, 
+        self._v_scroll = TransparentScroller(Qt.Orientation.Vertical, 
                                          bg_alpha, handle_alpha,
                                          hover_alpha, pressed_alpha,
                                          scroll_bar_width, use_dark_theme)
         self._v_scroll.setParent(self)
         
         # Создаем горизонтальный скроллбар
-        self._h_scroll = CustomScrollBar(Qt.Orientation.Horizontal, 
+        self._h_scroll = TransparentScroller(Qt.Orientation.Horizontal, 
                                          bg_alpha, handle_alpha,
                                          hover_alpha, pressed_alpha,
                                          scroll_bar_width, use_dark_theme)

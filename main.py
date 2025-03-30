@@ -1,14 +1,14 @@
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QLabel, QMainWindow,
                           QHBoxLayout, QScrollArea, QPushButton, QComboBox)
 from PyQt6.QtCore import Qt
-from custom_scroll import apply_overlay_scrollbars, toggle_scrollbar_theme, OverlayScrollArea
+from transparent_scroller import apply_overlay_scrollbars, toggle_scrollbar_theme, OverlayScrollArea
 
 # Создаем приложение
 app = QApplication([])
 
 # Создаем главное окно
 window = QMainWindow()
-window.setWindowTitle("Сравнение скроллбаров - с поддержкой тем")
+window.setWindowTitle("Сравнение скроллеров - с поддержкой тем")
 window.resize(600, 400)  # Увеличиваем ширину для четырех колонок
 
 # Создаем горизонтальный контейнер для колонок
@@ -23,14 +23,14 @@ std_content = QWidget()
 std_layout = QVBoxLayout(std_content)
 
 # Добавляем заголовок
-std_title = QLabel("Стандартные скроллбары")
+std_title = QLabel("Стандартные скроллеры")
 std_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 std_title.setStyleSheet("font-weight: bold;")
 std_layout.addWidget(std_title)
 
 # Добавляем много строк текста для проверки прокрутки
 for i in range(50):
-    label = QLabel(f"------ Стандартный скролл: Строка {i + 1}")
+    label = QLabel(f"------ Стандартный скроллер: Строка {i + 1}")
     label.setMinimumWidth(100)  # Делаем широкий контент для горизонтальной прокрутки
     std_layout.addWidget(label)
 
@@ -59,14 +59,14 @@ for i in range(50):
     label.setMinimumWidth(200)  # Делаем широкий контент для горизонтальной прокрутки
     light_layout.addWidget(label)
 
-# Применяем прозрачные скроллбары со светлой темой
+# Применяем прозрачные скроллеры со светлой темой
 light_scroll = apply_overlay_scrollbars(
     light_content,
     bg_alpha=10,            # Почти прозрачный фон
     handle_alpha=100,       # Обычное состояние ползунка
     hover_alpha=150,        # При наведении мыши
     pressed_alpha=200,      # При нажатии
-    scroll_bar_width=10,    # Ширина скроллбаров
+    scroll_bar_width=10,    # Ширина скроллеров
     auto_hide=False,        # Отключаем автоскрытие
     use_dark_theme=False    # Используем светлую тему
 )
@@ -79,10 +79,13 @@ h_layout.addWidget(light_scroll)
 dark_content = QWidget()
 dark_layout = QVBoxLayout(dark_content)
 
+# Установка темного фона для виджета с темной темой
+dark_content.setStyleSheet("background-color: #2D2D30; color: white;")
+
 # Добавляем заголовок
 dark_title = QLabel("Темная тема (всегда видимые)")
 dark_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-dark_title.setStyleSheet("font-weight: bold;")
+dark_title.setStyleSheet("font-weight: bold; color: white;")
 dark_layout.addWidget(dark_title)
 
 # Добавляем много строк текста для проверки прокрутки
@@ -91,14 +94,14 @@ for i in range(50):
     label.setMinimumWidth(200)  # Делаем широкий контент для горизонтальной прокрутки
     dark_layout.addWidget(label)
 
-# Применяем прозрачные скроллбары с темной темой
+# Применяем прозрачные скроллеры с темной темой
 dark_scroll = apply_overlay_scrollbars(
     dark_content,
     bg_alpha=10,            # Почти прозрачный фон
     handle_alpha=100,       # Обычное состояние ползунка
     hover_alpha=150,        # При наведении мыши
     pressed_alpha=200,      # При нажатии
-    scroll_bar_width=10,    # Ширина скроллбаров
+    scroll_bar_width=15,    # Ширина скроллеров
     auto_hide=False,        # Отключаем автоскрытие
     use_dark_theme=True     # Используем темную тему
 )
@@ -106,7 +109,7 @@ dark_scroll = apply_overlay_scrollbars(
 # Добавляем в третью колонку
 h_layout.addWidget(dark_scroll)
 
-# ======== ЧЕТВЕРТАЯ КОЛОНКА: СКРОЛЛБАРЫ С АНИМАЦИЕЙ И ПЕРЕКЛЮЧАТЕЛЕМ ТЕМ ========
+# ======== ЧЕТВЕРТАЯ КОЛОНКА: СКРОЛЛЕРЫ С АНИМАЦИЕЙ И ПЕРЕКЛЮЧАТЕЛЕМ ТЕМ ========
 # Создаем виджет с макетом для колонки
 theme_switch_widget = QWidget()
 theme_switch_layout = QVBoxLayout(theme_switch_widget)
@@ -117,31 +120,31 @@ animated_content = QWidget()
 animated_layout = QVBoxLayout(animated_content)
 
 # Добавляем заголовок
-animated_title = QLabel("Анимированные скроллбары")
+animated_title = QLabel("Анимированные скроллеры")
 animated_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 animated_title.setStyleSheet("font-weight: bold;")
 animated_layout.addWidget(animated_title)
 
 # Добавляем инструкцию
-instruction = QLabel("Наведите мышь для появления скроллбаров")
+instruction = QLabel("Наведите мышь для появления скроллеров")
 instruction.setAlignment(Qt.AlignmentFlag.AlignCenter)
 instruction.setStyleSheet("color: #666; font-style: italic;")
 animated_layout.addWidget(instruction)
 
 # Добавляем много строк текста для проверки прокрутки
 for i in range(50):
-    label = QLabel(f"------ Кастомный скролл с анимацией: Строка {i + 1}")
+    label = QLabel(f"------ Кастомный скроллер с анимацией: Строка {i + 1}")
     label.setMinimumWidth(100)  # Делаем широкий контент для горизонтальной прокрутки
     animated_layout.addWidget(label)
 
-# Применяем настраиваемые скроллбары с анимацией
+# Применяем настраиваемые скроллеры с анимацией
 animated_scroll = apply_overlay_scrollbars(
     animated_content,
     bg_alpha=5,             # Почти прозрачный фон
-    handle_alpha=80,        # Низкая прозрачность в обычном состоянии
+    handle_alpha=100,        # Низкая прозрачность в обычном состоянии
     hover_alpha=150,        # Средняя прозрачность при наведении
     pressed_alpha=200,      # Низкая прозрачность при нажатии
-    scroll_bar_width=15,    # Ширина скроллбаров
+    scroll_bar_width=15,    # Ширина скроллеров
     auto_hide=True,         # Включаем автоскрытие с анимацией
     use_dark_theme=False    # По умолчанию светлая тема
 )
@@ -167,8 +170,10 @@ def on_theme_changed(index):
     # Обновляем стиль инструкции в зависимости от темы
     if use_dark_theme:
         instruction.setStyleSheet("color: #aaa; font-style: italic;")
+        animated_content.setStyleSheet("background-color: #2D2D30; color: white;")
     else:
         instruction.setStyleSheet("color: #666; font-style: italic;")
+        animated_content.setStyleSheet("background-color: #f5f5f5; color: black;")
 
 # Подключаем обработчик
 theme_selector.currentIndexChanged.connect(on_theme_changed)
