@@ -276,6 +276,10 @@ class OverlayScrollArea(QScrollArea):
         self._v_scroll.valueChanged.connect(self._scrollValueChanged)
         self._h_scroll.valueChanged.connect(self._scrollValueChanged)
         
+        # Привязываем сигналы стандартных скроллбаров к обновлениям
+        self.verticalScrollBar().valueChanged.connect(self._updateScrollBars)
+        self.horizontalScrollBar().valueChanged.connect(self._updateScrollBars)
+        
         # Создаем анимации для скроллбаров
         self._v_anim = QPropertyAnimation(self._v_scroll, b"opacity")
         self._h_anim = QPropertyAnimation(self._h_scroll, b"opacity")
@@ -288,10 +292,13 @@ class OverlayScrollArea(QScrollArea):
             self._v_scroll.setOpacity(1.0)
             self._h_scroll.setOpacity(1.0)
         
-        # Таймер для обновления состояния скроллбаров
+        # Таймер для редкого обновления состояния скроллбаров (когда нет прокрутки)
         self._update_timer = QTimer(self)
         self._update_timer.timeout.connect(self._updateScrollBars)
-        self._update_timer.start(100)  # Обновляем каждые 100 мс
+        self._update_timer.start(300)  # Обновляем каждые 300 мс вместо 100 мс
+        
+        # Флаг для отслеживания необходимости обновления
+        self._update_needed = True
         
         # Обновляем скроллбары сразу после инициализации
         QTimer.singleShot(0, self._updateScrollBars)
@@ -310,36 +317,69 @@ class OverlayScrollArea(QScrollArea):
             self.verticalScrollBar().setValue(value)
         elif sender == self._h_scroll:
             self.horizontalScrollBar().setValue(value)
+        
+        # Пометка, что требуется обновление
+        self._update_needed = True
     
     def resizeEvent(self, event):
         """Обработка изменения размера области прокрутки"""
         super().resizeEvent(event)
         
+        # При изменении размера требуется обновление
+        self._update_needed = True
+        
         # Обновляем положение и размеры скроллбаров
         self._updateScrollBarsGeometry()
     
+    def showEvent(self, event):
+        """Обработка показа виджета"""
+        super().showEvent(event)
+        # Обновляем скроллбары при отображении
+        self._update_needed = True
+        self._updateScrollBars()
+    
     def _updateScrollBars(self):
         """Обновляет параметры и состояние скроллбаров"""
+        # Проверяем, нужно ли обновление
         v_bar = self.verticalScrollBar()
         h_bar = self.horizontalScrollBar()
         
-        # Обновляем диапазоны скроллбаров
-        self._v_scroll.setRange(v_bar.minimum(), v_bar.maximum())
-        self._v_scroll.setPageStep(v_bar.pageStep())
-        self._v_scroll.setSingleStep(v_bar.singleStep())
-        self._v_scroll.setValue(v_bar.value())
+        # Проверка на изменение размеров или значений скроллбаров
+        v_visible = v_bar.maximum() > v_bar.minimum()
+        h_visible = h_bar.maximum() > h_bar.minimum()
         
-        self._h_scroll.setRange(h_bar.minimum(), h_bar.maximum())
-        self._h_scroll.setPageStep(h_bar.pageStep())
-        self._h_scroll.setSingleStep(h_bar.singleStep())
-        self._h_scroll.setValue(h_bar.value())
+        # Проверка на изменение видимости скроллбаров
+        v_visibility_changed = v_visible != self._v_scroll.isVisible()
+        h_visibility_changed = h_visible != self._h_scroll.isVisible()
         
-        # Обновляем видимость скроллбаров
-        self._v_scroll.setVisible(v_bar.maximum() > v_bar.minimum())
-        self._h_scroll.setVisible(h_bar.maximum() > h_bar.minimum())
+        # Проверка на изменение значений скроллбаров
+        v_value_changed = self._v_scroll.value() != v_bar.value()
+        h_value_changed = self._h_scroll.value() != h_bar.value()
         
-        # Обновляем положение и размеры скроллбаров
-        self._updateScrollBarsGeometry()
+        # Выполняем обновление только если что-то изменилось
+        if (self._update_needed or v_visibility_changed or h_visibility_changed 
+            or v_value_changed or h_value_changed):
+            
+            # Обновляем диапазоны скроллбаров
+            self._v_scroll.setRange(v_bar.minimum(), v_bar.maximum())
+            self._v_scroll.setPageStep(v_bar.pageStep())
+            self._v_scroll.setSingleStep(v_bar.singleStep())
+            self._v_scroll.setValue(v_bar.value())
+            
+            self._h_scroll.setRange(h_bar.minimum(), h_bar.maximum())
+            self._h_scroll.setPageStep(h_bar.pageStep())
+            self._h_scroll.setSingleStep(h_bar.singleStep())
+            self._h_scroll.setValue(h_bar.value())
+            
+            # Обновляем видимость скроллбаров
+            self._v_scroll.setVisible(v_visible)
+            self._h_scroll.setVisible(h_visible)
+            
+            # Обновляем положение и размеры скроллбаров
+            self._updateScrollBarsGeometry()
+            
+            # Сбрасываем флаг необходимости обновления
+            self._update_needed = False
     
     def _updateScrollBarsGeometry(self):
         """Обновляет геометрию скроллбаров"""
@@ -380,6 +420,7 @@ class OverlayScrollArea(QScrollArea):
         super().wheelEvent(event)
         
         # Обновляем отображение скроллбаров
+        self._update_needed = True
         self._updateScrollBars()
     
     def enterEvent(self, event):
