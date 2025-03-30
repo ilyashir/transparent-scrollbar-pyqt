@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QScrollArea, QFrame, QScrollBar, QApplication, QHBoxLayout)
 from PyQt6.QtCore import Qt, QRect, QPoint, QTimer, QEvent, QObject, pyqtSignal, QPropertyAnimation, QEasingCurve, pyqtProperty
-from PyQt6.QtGui import QPainter, QColor, QPen, QPaintEvent
+from PyQt6.QtGui import QPainter, QColor, QPen, QPaintEvent, QPixmap
 
 # Предопределенные цвета для тем
 LIGHT_THEME = {
@@ -67,10 +67,16 @@ class TransparentScroller(QScrollBar):
         # Соединяем сигналы, которые влияют на геометрию ползунка
         self.valueChanged.connect(self._invalidateCache)
         self.rangeChanged.connect(self._invalidateCache)
+        
+        # Кэширование рендеринга
+        self._pixmap_cache = None
+        self._pixmap_cache_dirty = True
+        self._last_state = None
     
     def _invalidateCache(self):
         """Отмечает кэш как устаревший"""
         self._cache_dirty = True
+        self._pixmap_cache_dirty = True
     
     def _initColors(self):
         """Инициализирует цвета скроллбара на основе темы"""
@@ -87,6 +93,9 @@ class TransparentScroller(QScrollBar):
         self._handle_color.setAlpha(self._handle_alpha)
         self._hover_color.setAlpha(self._hover_alpha)
         self._pressed_color.setAlpha(self._pressed_alpha)
+        
+        # Инвалидируем кэш пиксмапа при изменении цветов
+        self._pixmap_cache_dirty = True
     
     def setTheme(self, use_dark_theme):
         """Изменение темы скроллбара"""
@@ -106,34 +115,24 @@ class TransparentScroller(QScrollBar):
     # Определяем свойство для анимации
     opacity = pyqtProperty(float, opacity, setOpacity)
     
-    def paintEvent(self, event):
-        """Отрисовка скроллбара с кастомным стилем"""
-        # Если полностью прозрачный, не рисуем ничего
-        if self._opacity <= 0.01:
-            return
-            
-        painter = QPainter(self)
+    def _renderToPixmap(self, handle_color):
+        """Отрисовывает скроллер в QPixmap для кэширования"""
+        # Создаем пиксмап размером с виджет
+        pixmap = QPixmap(self.size())
+        pixmap.fill(Qt.GlobalColor.transparent)  # Прозрачный фон
+        
+        # Создаем QPainter для рисования на пиксмапе
+        painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Размеры скроллбара
+        # Получаем размеры скроллбара
         rect = self.rect()
-        
-        # Применяем общую прозрачность
-        painter.setOpacity(self._opacity)
         
         # Рисуем фон скроллбара
         painter.fillRect(rect, self._bg_color)
         
         # Получаем размеры и положение ползунка
         handle_rect = self._calculateSliderRect()
-        
-        # Выбираем цвет ползунка в зависимости от состояния
-        if self._mouse_pressed:
-            handle_color = self._pressed_color
-        elif self._mouse_over:
-            handle_color = self._hover_color
-        else:
-            handle_color = self._handle_color
         
         # Рисуем ползунок с закругленными углами
         painter.setPen(Qt.PenStyle.NoPen)
@@ -144,6 +143,51 @@ class TransparentScroller(QScrollBar):
         
         # Рисуем закругленный прямоугольник
         painter.drawRoundedRect(handle_rect, radius, radius)
+        
+        # Завершаем рисование
+        painter.end()
+        
+        return pixmap
+    
+    def _getCurrentState(self):
+        """Возвращает текущее состояние скроллера для определения необходимости перерисовки"""
+        return (
+            self.size(),
+            self._calculateSliderRect(),
+            self._mouse_pressed,
+            self._mouse_over,
+            self._opacity,
+            self.use_dark_theme
+        )
+    
+    def paintEvent(self, event):
+        """Отрисовка скроллбара с кастомным стилем"""
+        # Если полностью прозрачный, не рисуем ничего
+        if self._opacity <= 0.01:
+            return
+            
+        # Получаем текущее состояние
+        current_state = self._getCurrentState()
+        
+        # Проверяем, нужно ли обновить кэш
+        if self._pixmap_cache_dirty or self._pixmap_cache is None or self._last_state != current_state:
+            # Определяем цвет ползунка в зависимости от состояния
+            if self._mouse_pressed:
+                handle_color = self._pressed_color
+            elif self._mouse_over:
+                handle_color = self._hover_color
+            else:
+                handle_color = self._handle_color
+            
+            # Рендерим виджет в пиксмап
+            self._pixmap_cache = self._renderToPixmap(handle_color)
+            self._pixmap_cache_dirty = False
+            self._last_state = current_state
+        
+        # Рисуем кэшированное изображение с учетом прозрачности
+        painter = QPainter(self)
+        painter.setOpacity(self._opacity)
+        painter.drawPixmap(0, 0, self._pixmap_cache)
     
     def _calculateSliderRect(self):
         """Вычисляет прямоугольник ползунка скроллбара"""
@@ -210,25 +254,20 @@ class TransparentScroller(QScrollBar):
     
     def mousePressEvent(self, event):
         """Обработка нажатия мыши"""
-        # Вызываем стандартный обработчик
         super().mousePressEvent(event)
-        
-        # Устанавливаем флаг нажатия
         self._mouse_pressed = True
+        self._pixmap_cache_dirty = True  # Инвалидируем кэш
         self.update()
     
     def mouseReleaseEvent(self, event):
         """Обработка отпускания кнопки мыши"""
-        # Вызываем стандартный обработчик
         super().mouseReleaseEvent(event)
-        
-        # Сбрасываем флаг нажатия
         self._mouse_pressed = False
+        self._pixmap_cache_dirty = True  # Инвалидируем кэш
         self.update()
     
     def mouseMoveEvent(self, event):
         """Обработка движения мыши"""
-        # Вызываем стандартный обработчик
         super().mouseMoveEvent(event)
         
         # Проверяем, находится ли курсор над ползунком
@@ -238,19 +277,22 @@ class TransparentScroller(QScrollBar):
         
         # Если состояние изменилось, перерисовываем
         if was_over != self._mouse_over:
+            self._pixmap_cache_dirty = True  # Инвалидируем кэш
             self.update()
     
     def enterEvent(self, event):
-        """Обработка входа курсора в область скроллбара"""
+        """Обработка входа курсора в область виджета"""
         super().enterEvent(event)
-        self.update()
+        # При входе курсора мыши инвалидируем кэш, так как может измениться состояние
+        self._pixmap_cache_dirty = True
     
     def leaveEvent(self, event):
-        """Обработка выхода курсора за пределы скроллбара"""
+        """Обработка выхода курсора из области виджета"""
         super().leaveEvent(event)
         self._mouse_over = False
+        self._pixmap_cache_dirty = True  # Инвалидируем кэш
         self.update()
-
+    
     def resizeEvent(self, event):
         """Обработка изменения размера"""
         super().resizeEvent(event)
