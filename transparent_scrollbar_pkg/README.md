@@ -9,7 +9,7 @@
 pip install .
 
 # Или напрямую из GitHub
-pip install git+https://github.com/ваш_username/transparent-scrollbar-pyqt.git
+pip install git+https://github.com/ilyashir/transparent-scrollbar-pyqt.git#subdirectory=transparent_scrollbar_pkg
 ```
 
 ## Возможности
