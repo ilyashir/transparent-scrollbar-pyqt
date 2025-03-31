@@ -308,36 +308,38 @@ class OverlayScrollArea(QScrollArea):
                  scroll_bar_width=8, auto_hide=False, use_dark_theme=False):
         super().__init__()
         
-        # Базовые настройки области прокрутки
-        self.setWidgetResizable(True)
-        self.setWidget(widget)
-        self.setFrameShape(QFrame.Shape.NoFrame)  # Убираем рамку
-        
-        # Сохраняем параметры для создания скроллбаров
+        # Сохраняем параметры
         self._bg_alpha = bg_alpha
         self._handle_alpha = handle_alpha
         self._hover_alpha = hover_alpha
         self._pressed_alpha = pressed_alpha
-        self._scroll_bar_width = scroll_bar_width
         self._auto_hide = auto_hide
         self._use_dark_theme = use_dark_theme
+        self._scroll_bar_width = scroll_bar_width
         
-        # Отключаем стандартные скроллбары
+        # Настройка области прокрутки
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setWidget(widget)
+        
+        # Скрываем стандартные скроллбары
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
-        # Создаем вертикальный скроллбар
-        self._v_scroll = TransparentScroller(Qt.Orientation.Vertical, 
-                                         bg_alpha, handle_alpha,
-                                         hover_alpha, pressed_alpha,
-                                         scroll_bar_width, use_dark_theme)
-        self._v_scroll.setParent(self)
+        # Создаем наши пользовательские скроллбары
+        self._v_scroll = TransparentScroller(
+            Qt.Orientation.Vertical, 
+            bg_alpha, handle_alpha, hover_alpha, pressed_alpha,
+            scroll_bar_width, use_dark_theme
+        )
+        self._h_scroll = TransparentScroller(
+            Qt.Orientation.Horizontal, 
+            bg_alpha, handle_alpha, hover_alpha, pressed_alpha,
+            scroll_bar_width, use_dark_theme
+        )
         
-        # Создаем горизонтальный скроллбар
-        self._h_scroll = TransparentScroller(Qt.Orientation.Horizontal, 
-                                         bg_alpha, handle_alpha,
-                                         hover_alpha, pressed_alpha,
-                                         scroll_bar_width, use_dark_theme)
+        # Делаем скроллбары дочерними элементами этого виджета
+        self._v_scroll.setParent(self)
         self._h_scroll.setParent(self)
         
         # Устанавливаем начальное положение скроллбаров
@@ -352,15 +354,19 @@ class OverlayScrollArea(QScrollArea):
         self.verticalScrollBar().valueChanged.connect(self._updateScrollBars)
         self.horizontalScrollBar().valueChanged.connect(self._updateScrollBars)
         
-        # Создаем анимации для скроллбаров
-        self._v_anim = QPropertyAnimation(self._v_scroll, b"opacity")
-        self._h_anim = QPropertyAnimation(self._h_scroll, b"opacity")
+        # Инициализируем анимации
+        self._v_anim = None
+        self._h_anim = None
         
-        # Настраиваем видимость скроллбаров
+        # Управление видимостью скроллбаров и анимациями
         if self._auto_hide:
+            # Создаем анимации только при необходимости
+            self._initAnimations()
+            # Начинаем с невидимых скроллбаров
             self._v_scroll.setOpacity(0.0)
             self._h_scroll.setOpacity(0.0)
         else:
+            # Если автоскрытие отключено, просто делаем скроллбары видимыми
             self._v_scroll.setOpacity(1.0)
             self._h_scroll.setOpacity(1.0)
         
@@ -374,6 +380,74 @@ class OverlayScrollArea(QScrollArea):
         
         # Обновляем скроллбары сразу после инициализации
         QTimer.singleShot(0, self._updateScrollBars)
+    
+    def _initAnimations(self):
+        """Инициализация и настройка анимаций для скроллбаров"""
+        # Создаем анимацию для вертикального скроллбара
+        self._v_anim = QPropertyAnimation(self._v_scroll, b"opacity")
+        self._v_anim.setEasingCurve(QEasingCurve.Type.OutCubic)  # Более плавная кривая
+        
+        # Создаем анимацию для горизонтального скроллбара
+        self._h_anim = QPropertyAnimation(self._h_scroll, b"opacity")
+        self._h_anim.setEasingCurve(QEasingCurve.Type.OutCubic)  # Более плавная кривая
+    
+    def _setupShowAnimation(self):
+        """Настройка анимации появления скроллбаров"""
+        # Настраиваем анимации только если они созданы
+        if self._v_anim and self._h_anim:
+            self._v_anim.setDuration(300)  # Быстрое появление
+            self._v_anim.setEndValue(1.0)
+            
+            self._h_anim.setDuration(300)  # Быстрое появление
+            self._h_anim.setEndValue(1.0)
+    
+    def _setupHideAnimation(self):
+        """Настройка анимации скрытия скроллбаров"""
+        # Настраиваем анимации только если они созданы
+        if self._v_anim and self._h_anim:
+            self._v_anim.setDuration(700)  # Медленное исчезновение
+            self._v_anim.setEndValue(0.0)
+            
+            self._h_anim.setDuration(700)  # Медленное исчезновение
+            self._h_anim.setEndValue(0.0)
+    
+    def _startShowAnimation(self):
+        """Запуск анимации появления скроллбаров"""
+        # Запускаем анимации только если они созданы и нужны
+        if self._auto_hide and self._v_anim and self._h_anim:
+            # Останавливаем текущие анимации
+            self._v_anim.stop()
+            self._h_anim.stop()
+            
+            # Настраиваем анимацию на появление
+            self._setupShowAnimation()
+            
+            # Устанавливаем начальные значения (текущая прозрачность)
+            self._v_anim.setStartValue(self._v_scroll._opacity)
+            self._h_anim.setStartValue(self._h_scroll._opacity)
+            
+            # Запускаем анимации
+            self._v_anim.start()
+            self._h_anim.start()
+    
+    def _startHideAnimation(self):
+        """Запуск анимации скрытия скроллбаров"""
+        # Запускаем анимации только если они созданы и нужны
+        if self._auto_hide and self._v_anim and self._h_anim:
+            # Останавливаем текущие анимации
+            self._v_anim.stop()
+            self._h_anim.stop()
+            
+            # Настраиваем анимацию на скрытие
+            self._setupHideAnimation()
+            
+            # Устанавливаем начальные значения (текущая прозрачность)
+            self._v_anim.setStartValue(self._v_scroll._opacity)
+            self._h_anim.setStartValue(self._h_scroll._opacity)
+            
+            # Запускаем анимации
+            self._v_anim.start()
+            self._h_anim.start()
     
     def setTheme(self, use_dark_theme):
         """Установка темы для всех скроллбаров"""
@@ -499,43 +573,23 @@ class OverlayScrollArea(QScrollArea):
         """Обработка входа курсора в область виджета"""
         super().enterEvent(event)
         
-        # Если включено автоскрытие, анимируем появление скроллбаров
+        # Если автоскрытие включено, показываем скроллбары
         if self._auto_hide:
-            self._v_anim.stop()
-            self._h_anim.stop()
-            
-            # Быстрое появление (300 мс)
-            self._v_anim.setDuration(300)
-            self._v_anim.setStartValue(self._v_scroll._opacity)
-            self._v_anim.setEndValue(1.0)
-            
-            self._h_anim.setDuration(300)
-            self._h_anim.setStartValue(self._h_scroll._opacity)
-            self._h_anim.setEndValue(1.0)
-            
-            self._v_anim.start()
-            self._h_anim.start()
+            # Настраиваем анимацию появления
+            self._setupShowAnimation()
+            # Запускаем анимацию
+            self._startShowAnimation()
     
     def leaveEvent(self, event):
         """Обработка выхода курсора за пределы виджета"""
         super().leaveEvent(event)
         
-        # Если включено автоскрытие, анимируем исчезновение скроллбаров
+        # Если автоскрытие включено, скрываем скроллбары
         if self._auto_hide:
-            self._v_anim.stop()
-            self._h_anim.stop()
-            
-            # Медленное исчезновение (700 мс)
-            self._v_anim.setDuration(700)
-            self._v_anim.setStartValue(self._v_scroll._opacity)
-            self._v_anim.setEndValue(0.0)
-            
-            self._h_anim.setDuration(700)
-            self._h_anim.setStartValue(self._h_scroll._opacity)
-            self._h_anim.setEndValue(0.0)
-            
-            self._v_anim.start()
-            self._h_anim.start()
+            # Настраиваем анимацию исчезновения
+            self._setupHideAnimation()
+            # Запускаем анимацию
+            self._startHideAnimation()
 
 
 def apply_overlay_scrollbars(widget, bg_alpha=30, handle_alpha=80, 
