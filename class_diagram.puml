@@ -1,0 +1,133 @@
+@startuml TransparentScrollbar Library
+
+skinparam classAttributeIconSize 0
+skinparam classFontStyle bold
+skinparam classFontSize 14
+skinparam classBackgroundColor #f0f0f0
+skinparam classBorderColor #999999
+skinparam arrowColor #666666
+skinparam packageBackgroundColor #e0e0e0
+skinparam packageBorderColor #999999
+
+package transparent_scroller {
+    class BaseScrollBar {
+        + bg_alpha: int
+        + handle_alpha: int
+        + hover_alpha: int
+        + pressed_alpha: int
+        + scroll_bar_width: int
+        + auto_hide: bool
+        + use_dark_theme: bool
+        + setOrientation()
+        + setBgAlpha()
+        + setHandleAlpha()
+        + setHoverAlpha()
+        + setPressedAlpha()
+        + setScrollBarWidth()
+        + setAutoHide()
+        + setUseDarkTheme()
+        # _rect(): QRect
+        # _handleRect(): QRect
+        # _opacity(): double
+        # paintEvent()
+        # {abstract} _orientation: Qt.Orientation
+    }
+    
+    class VerticalScrollBar {
+        # _orientation = Qt.Orientation.Vertical
+    }
+    
+    class HorizontalScrollBar {
+        # _orientation = Qt.Orientation.Horizontal
+    }
+    
+    class OverlayScrollArea {
+        + setVerticalScrollBar()
+        + setHorizontalScrollBar()
+        + verticalScrollBar(): BaseScrollBar
+        + horizontalScrollBar(): BaseScrollBar
+    }
+    
+    class ScrollBarThemeManager {
+        + setTheme()
+        + bgColor(): QColor
+        + handleColor(): QColor
+        - _light_colors: dict
+        - _dark_colors: dict
+    }
+    
+    class ScrollBarAnimationManager {
+        + startAnimation()
+        + stopAnimation()
+        + setAutoHide()
+        + showScrollBar()
+        + hideScrollBar()
+        - _animation: QPropertyAnimation
+        - _hide_timer: QTimer
+    }
+    
+    BaseScrollBar *-- ScrollBarThemeManager : uses >
+    BaseScrollBar *-- ScrollBarAnimationManager : uses >
+    VerticalScrollBar --|> BaseScrollBar
+    HorizontalScrollBar --|> BaseScrollBar
+    OverlayScrollArea o-- BaseScrollBar : contains >
+}
+
+package graphics_view_scroller {
+    class GraphicsViewScrollBar {
+        + showScrollbar()
+        + startHideTimer()
+        # _synchronize()
+        # {abstract} _getScrollBarValue()
+        # {abstract} _setScrollBarValue()
+    }
+    
+    class GraphicsViewVerticalScrollBar {
+        # _getScrollBarValue()
+        # _setScrollBarValue()
+    }
+    
+    class GraphicsViewHorizontalScrollBar {
+        # _getScrollBarValue()
+        # _setScrollBarValue()
+    }
+    
+    class GraphicsViewScrollManager {
+        + showScrollbars()
+        + startHideTimer()
+        - _event_filter()
+        - _on_view_destroyed()
+    }
+    
+    GraphicsViewScrollBar --|> BaseScrollBar
+    GraphicsViewVerticalScrollBar --|> GraphicsViewScrollBar
+    GraphicsViewHorizontalScrollBar --|> GraphicsViewScrollBar
+    GraphicsViewScrollManager o-- GraphicsViewScrollBar : manages >
+}
+
+' Functions
+package "Helper Functions" {
+    note as apply_overlay_note
+    **apply_overlay_scrollbars**
+    Creates a QScrollArea with custom scrollbars 
+    and applies settings to them
+    end note
+    
+    note as toggle_theme_note
+    **toggle_scrollbar_theme**
+    Changes theme of scrollbars in a QScrollArea
+    end note
+    
+    note as apply_graphics_view_note
+    **apply_scrollbars_to_graphics_view**
+    Applies custom scrollbars to QGraphicsView
+    end note
+}
+
+' External relationships
+apply_overlay_note ..> OverlayScrollArea : creates
+apply_graphics_view_note ..> GraphicsViewVerticalScrollBar : creates
+apply_graphics_view_note ..> GraphicsViewHorizontalScrollBar : creates
+apply_graphics_view_note ..> GraphicsViewScrollManager : creates
+
+@enduml 

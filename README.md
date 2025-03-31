@@ -1,174 +1,184 @@
-# Приложение с прозрачными скроллерами
+# Прозрачные скроллбары для PyQt6
 
-Демонстрация реализации прозрачных скроллеров для PyQt6 с поддержкой различных визуальных стилей и анимаций.
+Библиотека прозрачных, анимированных и настраиваемых скроллбаров для PyQt6.
 
-## Возможности
+## Особенности
 
-- **Прозрачные скроллеры** с настраиваемым уровнем прозрачности
-- **Поддержка светлой и темной темы**
-- **Анимация появления/исчезновения** скроллеров при наведении мыши
-- **Кастомизация стилей** (цвет, ширина, уровень прозрачности)
-- **Оптимизированная производительность** (кэширование вычислений, минимизация обновлений)
+- Полностью настраиваемые прозрачные скроллбары
+- Анимация появления и исчезновения
+- Поддержка светлой и темной темы
+- Оптимизированный рендеринг для высокой производительности
+- Автоматическое скрытие скроллбаров при бездействии
+- Поддержка как обычных виджетов (через QScrollArea), так и QGraphicsView
 
-## Структура проекта
+## Установка
 
-- `main.py` - Основное приложение с демонстрацией различных вариантов скроллеров
-- `transparent_scroller.py` - Модуль с реализацией прозрачных скроллеров:
-  - `BaseScrollBar` - Базовый класс для скроллеров с общей функциональностью
-  - `VerticalScrollBar` - Вертикальный скроллер 
-  - `HorizontalScrollBar` - Горизонтальный скроллер
-  - `ScrollBarThemeManager` - Управление темами оформления скроллеров
-  - `ScrollBarAnimationManager` - Управление анимациями скроллеров
-  - `OverlayScrollArea` - QScrollArea с оптимизированными скроллерами
-  - Вспомогательные функции `apply_overlay_scrollbars` и `toggle_scrollbar_theme`
-- `tests/` - Тесты производительности и примеры использования
+```bash
+pip install git+https://github.com/ваш_username/transparent-scrollbar-pyqt.git#subdirectory=transparent_scrollbar_pkg
+```
 
 ## Использование
 
-### Простой способ (с помощью вспомогательных функций)
+### Для обычных виджетов
+
+Самый простой способ использования - функция `apply_overlay_scrollbars`:
 
 ```python
-from transparent_scroller import apply_overlay_scrollbars, toggle_scrollbar_theme
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel
+from transparent_scrollbar import apply_overlay_scrollbars
 
-# Создание скроллера со светлой темой
+app = QApplication([])
+
+# Создаем содержимое
+content = QWidget()
+layout = QVBoxLayout(content)
+
+# Добавляем много элементов для скроллинга
+for i in range(100):
+    label = QLabel(f"Элемент {i}")
+    layout.addWidget(label)
+
+# Применяем прозрачные скроллбары
 scroll_area = apply_overlay_scrollbars(
-    content_widget,
-    bg_alpha=10,            # Прозрачность фона
-    handle_alpha=100,       # Прозрачность ползунка
-    hover_alpha=150,        # Прозрачность при наведении
-    pressed_alpha=200,      # Прозрачность при нажатии
-    scroll_bar_width=10,    # Ширина скроллеров
-    auto_hide=False,        # Автоскрытие скроллеров
-    use_dark_theme=False    # Тема оформления
+    content,
+    bg_alpha=30,            # Прозрачность фона
+    handle_alpha=80,        # Прозрачность ползунка
+    hover_alpha=120,        # Прозрачность при наведении
+    pressed_alpha=160,      # Прозрачность при нажатии
+    scroll_bar_width=8,     # Ширина скроллбаров
+    auto_hide=True,         # Автоскрытие скроллбаров
+    use_dark_theme=False    # Светлая/темная тема
 )
 
-# Переключение между темами
-toggle_scrollbar_theme(scroll_area, use_dark_theme=True)
+# Отображаем виджет
+scroll_area.show()
+app.exec()
 ```
 
-### Продвинутый способ (прямое использование классов)
+### Для QGraphicsView
+
+Для QGraphicsView используется специальная функция `apply_scrollbars_to_graphics_view`:
 
 ```python
-from PyQt6.QtWidgets import QScrollArea
-from transparent_scroller import VerticalScrollBar, HorizontalScrollBar, OverlayScrollArea
+from PyQt6.QtWidgets import QApplication, QGraphicsView, QGraphicsScene
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QBrush, QPen
+from transparent_scrollbar import apply_scrollbars_to_graphics_view
 
-# Вариант 1: Создание OverlayScrollArea с настраиваемыми скроллерами
-scroll_area = OverlayScrollArea()
-scroll_area.setWidget(content_widget)
+app = QApplication([])
 
-# Настройка вертикального скроллера
-v_scrollbar = scroll_area.verticalScrollBar()
-v_scrollbar.set_auto_hide(True)
-v_scrollbar.set_use_dark_theme(True)
+# Создаем QGraphicsView и QGraphicsScene
+view = QGraphicsView()
+scene = QGraphicsScene()
+view.setScene(scene)
 
-# Вариант 2: Добавление скроллеров к существующему QScrollArea
-scroll_area = QScrollArea()
-scroll_area.setWidgetResizable(True)
-scroll_area.setWidget(content_widget)
+# Настраиваем размер сцены и добавляем элементы
+scene.setSceneRect(0, 0, 2000, 2000)
+for i in range(10):
+    for j in range(10):
+        color = QColor.fromHsv(((i * 10 + j) * 15) % 360, 200, 200)
+        scene.addRect(i * 200, j * 200, 190, 190, 
+                     pen=QPen(Qt.PenStyle.NoPen),
+                     brush=QBrush(color))
 
-# Замена стандартных скроллеров
-v_scrollbar = VerticalScrollBar(auto_hide=True, use_dark_theme=True)
-h_scrollbar = HorizontalScrollBar(auto_hide=True, use_dark_theme=True)
+# Применяем прозрачные скроллбары к QGraphicsView
+vsb, hsb = apply_scrollbars_to_graphics_view(
+    view,
+    bg_alpha=10,          # Прозрачность фона
+    handle_alpha=100,     # Прозрачность ползунка
+    hover_alpha=150,      # Прозрачность при наведении
+    pressed_alpha=200,    # Прозрачность при нажатии
+    scroll_bar_width=10,  # Ширина скроллбара
+    use_dark_theme=True,  # Темная тема
+    auto_hide=True        # Автоскрытие
+)
 
-scroll_area.setVerticalScrollBar(v_scrollbar)
-scroll_area.setHorizontalScrollBar(h_scrollbar)
+# Отображаем GraphicsView
+view.resize(800, 600)
+view.show()
+app.exec()
 ```
+
+## Более сложное использование
+
+### Прямое создание скроллбаров
+
+Вы также можете напрямую использовать классы скроллбаров:
+
+```python
+from PyQt6.QtWidgets import QApplication, QScrollArea, QLabel
+from PyQt6.QtCore import Qt
+from transparent_scrollbar import VerticalScrollBar, HorizontalScrollBar
+
+app = QApplication([])
+
+# Создаем QScrollArea
+scroll_area = QScrollArea()
+scroll_area.setWidget(QLabel("Большой контент"))
+
+# Создаем и настраиваем скроллбары
+vsb = VerticalScrollBar()
+vsb.bg_alpha = 30
+vsb.handle_alpha = 80
+vsb.hover_alpha = 120
+vsb.pressed_alpha = 160
+vsb.auto_hide = True
+vsb.use_dark_theme = False
+
+hsb = HorizontalScrollBar()
+hsb.bg_alpha = 30
+hsb.handle_alpha = 80
+hsb.hover_alpha = 120
+hsb.pressed_alpha = 160
+hsb.auto_hide = True
+hsb.use_dark_theme = False
+
+# Устанавливаем скроллбары
+scroll_area.setVerticalScrollBar(vsb)
+scroll_area.setHorizontalScrollBar(hsb)
+
+scroll_area.resize(400, 300)
+scroll_area.show()
+app.exec()
+```
+
+### Переключение темы
+
+Библиотека поддерживает динамическое переключение между светлой и темной темой:
+
+```python
+from transparent_scrollbar import toggle_scrollbar_theme
+
+# ... создаем scroll_area с прозрачными скроллбарами ...
+
+# Переключаем на темную тему
+toggle_scrollbar_theme(scroll_area, use_dark_theme=True)
+
+# Переключаем обратно на светлую тему
+toggle_scrollbar_theme(scroll_area, use_dark_theme=False)
+```
+
+## Архитектура библиотеки
+
+Библиотека имеет модульную архитектуру:
+
+1. `BaseScrollBar` - базовый класс для всех скроллбаров
+2. `VerticalScrollBar` и `HorizontalScrollBar` - специализированные скроллбары
+3. `OverlayScrollArea` - специальная реализация QScrollArea с поддержкой прозрачных скроллбаров
+4. `ScrollBarThemeManager` - менеджер тем для скроллбаров
+5. `ScrollBarAnimationManager` - менеджер анимаций для скроллбаров
+6. `GraphicsViewScrollBar` - базовый класс для скроллбаров QGraphicsView
+7. `GraphicsViewVerticalScrollBar` и `GraphicsViewHorizontalScrollBar` - скроллбары для QGraphicsView
 
 ## Оптимизации
 
-Проект включает следующие оптимизации:
+Библиотека содержит несколько оптимизаций для улучшения производительности:
 
-1. **Увеличенный интервал обновления таймера** (с 100 мс до 300 мс)
-   - Снижает нагрузку на CPU при частых обновлениях
-   - Реализован флаг `_update_needed` для отслеживания необходимости обновления
-
-2. **Кэширование расчетов положения и размеров ползунка**
-   - Устраняет повторные вычисления при каждой перерисовке
-   - Реализован механизм инвалидации кэша при изменении параметров
-   - Кэширование промежуточных вычислений (соотношений)
-   - Ускорение расчетов до 80% в типичных сценариях использования
-
-3. **Оптимизация рендеринга с использованием QPixmap**
-   - Кэширование отрисованного изображения скроллера
-   - Умная проверка необходимости перерисовки
-   - Улучшение производительности до 20% в сложных сценариях
-
-4. **Оптимизация анимаций**
-   - Ленивая инициализация - создание анимаций только при необходимости
-   - Использование более плавных кривых анимации (OutCubic вместо Linear)
-   - Снижение нагрузки на CPU при использовании анимаций на ~15-20%
-
-5. **Оптимизация обновления состояния скроллбаров**
-   - Отслеживание дельты изменений для уменьшения количества обновлений
-   - Обновление только при значимых изменениях (более 1% от диапазона)
-   - Кэширование предыдущего состояния для быстрого сравнения
-   - Снижение количества обновлений до 30-40% в сценариях с плавной прокруткой
-
-6. **Оптимизация обработки событий мыши**
-   - Унифицированная система обработки событий вместо дублирования кода
-   - Обновление только при реальном изменении состояния (нажатие, наведение)
-   - Улучшенная проверка необходимости перерисовки
-   - Снижение количества перерисовок до 50% при взаимодействии с интерфейсом
-
-7. **Ленивое создание графических ресурсов**
-   - Создание QPixmap только когда скроллбар видим (opacity > 0.01)
-   - Пропуск создания QPixmap для слишком маленьких элементов
-   - Адаптивный радиус закругления в зависимости от размера ползунка
-   - Экономия памяти и ресурсов GPU
-
-## Структурная оптимизация
-- Разделение кода на базовый класс и специализированные классы вертикального и горизонтального скроллбаров
-- Выделение управления темами в отдельный класс-менеджер `ScrollBarThemeManager`
-- Выделение управления анимациями в отдельный класс-менеджер `ScrollBarAnimationManager`
-- Ленивая инициализация анимаций только при необходимости (режим auto_hide)
-- Улучшенная объектно-ориентированная структура, обеспечивающая более высокую масштабируемость и упрощение поддержки кода
-- Сокращение дублирования кода за счёт наследования
-- Реализация чистого архитектурного подхода через абстрактные методы и строгое разделение ответственности
-
-## Тесты
-- `tests/rect_cache_test.py` - тесты для проверки эффективности кэширования расчетов прямоугольника скроллбара
-- `tests/animation_test.py` - тесты для проверки оптимизации анимаций и потребления памяти
-- `tests/structure_test.py` - тесты для проверки структурной оптимизации и корректности разделения кода 
-- `tests/simple_test.py` - простой тест для сравнения рендеринга с использованием кэширования QPixmap и без него
-- `tests/performance_test.py` - комплексный тест всех оптимизаций в различных сценариях использования
-- `tests/real_world_test.py` - тест производительности скроллбаров в реальном сценарии с 200 виджетами
-- `tests/run_all_tests.py` - скрипт для последовательного запуска всех тестов с подробным отчётом
-
-Подробная информация о каждом тесте и инструкции по запуску содержатся в `tests/README.md`.
-
-## Запуск тестов
-
-```bash
-# Запуск отдельного теста
-python tests/simple_test.py
-
-# Запуск всех тестов
-python tests/run_all_tests.py
-```
-
-## Результаты тестов
-
-В результате проведенных оптимизаций достигнуты следующие улучшения:
-
-- **Кэширование расчетов**: Ускорение на 30-40% (подтверждено в `rect_cache_test.py`)
-- **Оптимизация отрисовки с QPixmap**: Улучшение на ~40% (подтверждено в `simple_test.py`)
-- **Оптимизация анимаций**: Снижение нагрузки на CPU на ~15-20% (подтверждено в `animation_test.py`) 
-- **Реальный сценарий использования**: Улучшение на ~10% по сравнению со стандартными скроллбарами Qt (подтверждено в `real_world_test.py`)
-
-Общее улучшение производительности зависит от конкретного сценария использования, но в среднем составляет 15-40%.
-
-## Требования
-
-- Python 3.x
-- PyQt6
-- psutil (для тестов производительности)
-- colorama (для запуска всех тестов с форматированным выводом)
-
-## Запуск
-
-```
-python main.py
-```
+1. **Кэширование вычислений**: Предотвращает повторные вычисления размеров и позиций скроллбаров
+2. **Оптимизация рендеринга**: Использование QPixmap для кэширования отрисовки скроллбаров
+3. **Ленивая инициализация анимаций**: Создание анимаций только при необходимости
+4. **Оптимизированные кривые анимации**: Тщательно настроенные кривые для плавности и производительности
+5. **Ленивая инициализация QPixmap**: Создание QPixmap только при необходимости
 
 ## Лицензия
 

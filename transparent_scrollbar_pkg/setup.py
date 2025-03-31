@@ -1,21 +1,20 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name="transparent_scrollbar",
-    version="1.0.0",
-    description="Оптимизированные прозрачные скроллбары для PyQt6",
+    version="0.1.0",
+    description="Transparent scrollbars for PyQt6",
     author="Ilya Shirokolobov",
     author_email="ilya.shirokolobov@gmail.com",
-    packages=find_packages(),
+    py_modules=["transparent_scrollbar.transparent_scroller", "transparent_scrollbar.graphics_view_scroller"],
+    packages=["transparent_scrollbar"],
     install_requires=[
-        "PyQt6>=6.0.0",
+        "PyQt6",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
-        "Intended Audience :: Developers",
-        "Topic :: Software Development :: User Interfaces",
     ],
     python_requires=">=3.6",
 ) 
