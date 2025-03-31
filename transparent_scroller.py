@@ -17,8 +17,24 @@ DARK_THEME = {
     "pressed_color": QColor(240, 240, 240)   # Еще светлее
 }
 
-class TransparentScroller(QScrollBar):
-    """Прозрачный скроллер с настраиваемой прозрачностью"""
+
+class ScrollBarThemeManager:
+    """Класс для управления темами скроллбаров"""
+    
+    @staticmethod
+    def get_theme_colors(use_dark_theme=False):
+        """Возвращает цвета для выбранной темы"""
+        return DARK_THEME if use_dark_theme else LIGHT_THEME
+    
+    @staticmethod
+    def apply_theme(scrollbar, use_dark_theme=False):
+        """Применяет тему к скроллбару"""
+        if hasattr(scrollbar, 'setTheme'):
+            scrollbar.setTheme(use_dark_theme)
+
+
+class BaseScrollBar(QScrollBar):
+    """Базовый класс для прозрачных скроллбаров с общей функциональностью"""
     
     def __init__(self, orientation, bg_alpha=30, handle_alpha=80, 
                  hover_alpha=120, pressed_alpha=160,
@@ -49,10 +65,7 @@ class TransparentScroller(QScrollBar):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         
         # Настройка размера в зависимости от ориентации
-        if orientation == Qt.Orientation.Vertical:
-            self.setFixedWidth(scroll_bar_width)
-        else:
-            self.setFixedHeight(scroll_bar_width)
+        self._configure_size(scroll_bar_width)
         
         # Отслеживаем положение мыши
         self.setMouseTracking(True)
@@ -81,6 +94,13 @@ class TransparentScroller(QScrollBar):
         self._pixmap_cache_dirty = True
         self._last_state = None
     
+    def _configure_size(self, scroll_bar_width):
+        """Настраивает размер скроллбара в зависимости от ориентации"""
+        if self._orientation == Qt.Orientation.Vertical:
+            self.setFixedWidth(scroll_bar_width)
+        else:
+            self.setFixedHeight(scroll_bar_width)
+    
     def _invalidateCache(self):
         """Отмечает кэш как устаревший"""
         self._cache_dirty = True
@@ -91,7 +111,7 @@ class TransparentScroller(QScrollBar):
     
     def _initColors(self):
         """Инициализирует цвета скроллбара на основе темы"""
-        theme = DARK_THEME if self.use_dark_theme else LIGHT_THEME
+        theme = ScrollBarThemeManager.get_theme_colors(self.use_dark_theme)
         
         # Базовые цвета
         self._bg_color = QColor(theme["bg_color"])
@@ -240,36 +260,19 @@ class TransparentScroller(QScrollBar):
         # Отступы от краев (для эстетики)
         margin = 2
         
-        if self._orientation == Qt.Orientation.Vertical:
-            # Для вертикального скроллбара
-            handle_height = max(20, int(height * handle_size_ratio))
-            available_height = height - handle_height
-            handle_pos = int(available_height * position_ratio)
-            
-            rect = QRect(
-                margin, 
-                handle_pos, 
-                width - 2 * margin, 
-                handle_height
-            )
-        else:
-            # Для горизонтального скроллбара
-            handle_width = max(20, int(width * handle_size_ratio))
-            available_width = width - handle_width
-            handle_pos = int(available_width * position_ratio)
-            
-            rect = QRect(
-                handle_pos, 
-                margin, 
-                handle_width, 
-                height - 2 * margin
-            )
+        # Получаем прямоугольник в зависимости от ориентации
+        rect = self._calculateOrientedRect(handle_size_ratio, position_ratio, margin, width, height)
         
         # Кэшируем результат и сохраняем параметры, при которых он был вычислен
         self._cached_slider_rect = rect
         self._cached_params = (min_val, max_val, page_step, value, width, height)
         self._cache_dirty = False
         return rect
+    
+    def _calculateOrientedRect(self, handle_size_ratio, position_ratio, margin, width, height):
+        """Вычисляет прямоугольник ползунка с учетом ориентации"""
+        # Этот метод должен быть переопределен в наследниках
+        raise NotImplementedError("Метод _calculateOrientedRect должен быть реализован в наследниках")
     
     def getCacheStats(self):
         """Возвращает статистику использования кэша"""
@@ -330,12 +333,191 @@ class TransparentScroller(QScrollBar):
         self._invalidateCache()
 
 
+class ScrollBarAnimationManager:
+    """Класс для управления анимациями скроллбаров"""
+    
+    def __init__(self, scroll_bar, auto_hide=True, show_duration=300, hide_duration=1000, hide_delay=1000):
+        self.scroll_bar = scroll_bar
+        self.auto_hide = auto_hide
+        self.show_duration = show_duration
+        self.hide_duration = hide_duration
+        self.hide_delay = hide_delay
+        
+        # Анимации
+        self.show_animation = None
+        self.hide_animation = None
+        self.hide_timer = None
+        
+        # Инициализируем анимации только если нужно auto_hide
+        if self.auto_hide:
+            self._setup_animations()
+            self._setup_hide_timer()
+            # Начальное состояние - скрытый скроллбар
+            self.scroll_bar.setOpacity(0.0)
+    
+    def _setup_animations(self):
+        """Настройка анимаций для показа и скрытия скроллбара"""
+        # Анимация показа
+        self._setup_show_animation()
+        
+        # Анимация скрытия
+        self._setup_hide_animation()
+    
+    def _setup_show_animation(self):
+        """Настройка анимации показа скроллбара"""
+        self.show_animation = QPropertyAnimation(self.scroll_bar, b"opacity")
+        self.show_animation.setDuration(self.show_duration)
+        self.show_animation.setStartValue(0.0)
+        self.show_animation.setEndValue(1.0)
+        # Более быстрое начало анимации
+        self.show_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+    
+    def _setup_hide_animation(self):
+        """Настройка анимации скрытия скроллбара"""
+        self.hide_animation = QPropertyAnimation(self.scroll_bar, b"opacity")
+        self.hide_animation.setDuration(self.hide_duration)
+        self.hide_animation.setStartValue(1.0)
+        self.hide_animation.setEndValue(0.0)
+        # Более плавное начало анимации и быстрый конец
+        self.hide_animation.setEasingCurve(QEasingCurve.Type.InCubic)
+    
+    def _setup_hide_timer(self):
+        """Настройка таймера для скрытия скроллбара"""
+        self.hide_timer = QTimer()
+        self.hide_timer.setSingleShot(True)
+        self.hide_timer.timeout.connect(self.start_hide_animation)
+    
+    def start_show_animation(self):
+        """Запускает анимацию показа скроллбара"""
+        if not self.auto_hide:
+            return
+            
+        # Останавливаем таймер и анимацию скрытия, если они активны
+        if self.hide_timer.isActive():
+            self.hide_timer.stop()
+        
+        if self.hide_animation and self.hide_animation.state() == QPropertyAnimation.State.Running:
+            self.hide_animation.stop()
+        
+        # Запускаем анимацию показа только если скроллбар не виден полностью
+        current_opacity = self.scroll_bar._opacity
+        if current_opacity < 1.0:
+            self.show_animation.setStartValue(current_opacity)
+            self.show_animation.start()
+    
+    def start_hide_animation(self):
+        """Запускает анимацию скрытия скроллбара после задержки"""
+        if not self.auto_hide:
+            return
+            
+        # Запускаем анимацию скрытия только если скроллбар виден
+        current_opacity = self.scroll_bar._opacity
+        if current_opacity > 0.0:
+            self.hide_animation.setStartValue(current_opacity)
+            self.hide_animation.start()
+    
+    def restart_hide_timer(self):
+        """Перезапускает таймер для скрытия скроллбара"""
+        if not self.auto_hide:
+            return
+            
+        # Останавливаем предыдущий таймер, если он был активен
+        if self.hide_timer.isActive():
+            self.hide_timer.stop()
+        
+        # Запускаем таймер заново
+        self.hide_timer.start(self.hide_delay)
+    
+    def handle_widget_event(self, event_type):
+        """Обрабатывает события виджета для анимации скроллбара"""
+        if not self.auto_hide:
+            return
+            
+        if event_type == "enter":
+            # При входе курсора показываем скроллбар
+            self.start_show_animation()
+        elif event_type == "leave":
+            # При выходе курсора запускаем таймер для скрытия
+            self.restart_hide_timer()
+        elif event_type == "scroll":
+            # При прокрутке показываем скроллбар и перезапускаем таймер
+            self.start_show_animation()
+            self.restart_hide_timer()
+
+
+class VerticalScrollBar(BaseScrollBar):
+    """Вертикальный прозрачный скроллбар"""
+    
+    def __init__(self, bg_alpha=30, handle_alpha=80, hover_alpha=120, pressed_alpha=160,
+                 scroll_bar_width=8, use_dark_theme=False, auto_hide=True,
+                 show_duration=300, hide_duration=1000, hide_delay=1000):
+        super().__init__(Qt.Orientation.Vertical, bg_alpha, handle_alpha, 
+                          hover_alpha, pressed_alpha, scroll_bar_width, use_dark_theme)
+        
+        # Создаем менеджер анимаций
+        self.animation_manager = ScrollBarAnimationManager(
+            self, auto_hide, show_duration, hide_duration, hide_delay
+        )
+    
+    def _calculateOrientedRect(self, handle_size_ratio, position_ratio, margin, width, height):
+        """Вычисляет прямоугольник ползунка для вертикального скроллбара"""
+        # Вычисляем размер ползунка
+        handle_height = max(width, int((height - 2 * margin) * handle_size_ratio))
+        
+        # Вычисляем максимальное перемещение ползунка
+        max_y = height - handle_height - 2 * margin
+        
+        # Вычисляем положение ползунка
+        handle_y = margin + int(max_y * position_ratio)
+        
+        # Создаем прямоугольник для ползунка
+        return QRect(margin, handle_y, width - 2 * margin, handle_height)
+    
+    def handle_widget_event(self, event_type):
+        """Обрабатывает события виджета для анимации"""
+        self.animation_manager.handle_widget_event(event_type)
+
+
+class HorizontalScrollBar(BaseScrollBar):
+    """Горизонтальный прозрачный скроллбар"""
+    
+    def __init__(self, bg_alpha=30, handle_alpha=80, hover_alpha=120, pressed_alpha=160,
+                 scroll_bar_width=8, use_dark_theme=False, auto_hide=True,
+                 show_duration=300, hide_duration=1000, hide_delay=1000):
+        super().__init__(Qt.Orientation.Horizontal, bg_alpha, handle_alpha, 
+                          hover_alpha, pressed_alpha, scroll_bar_width, use_dark_theme)
+        
+        # Создаем менеджер анимаций
+        self.animation_manager = ScrollBarAnimationManager(
+            self, auto_hide, show_duration, hide_duration, hide_delay
+        )
+    
+    def _calculateOrientedRect(self, handle_size_ratio, position_ratio, margin, width, height):
+        """Вычисляет прямоугольник ползунка для горизонтального скроллбара"""
+        # Вычисляем размер ползунка
+        handle_width = max(height, int((width - 2 * margin) * handle_size_ratio))
+        
+        # Вычисляем максимальное перемещение ползунка
+        max_x = width - handle_width - 2 * margin
+        
+        # Вычисляем положение ползунка
+        handle_x = margin + int(max_x * position_ratio)
+        
+        # Создаем прямоугольник для ползунка
+        return QRect(handle_x, margin, handle_width, height - 2 * margin)
+    
+    def handle_widget_event(self, event_type):
+        """Обрабатывает события виджета для анимации"""
+        self.animation_manager.handle_widget_event(event_type)
+
+
 class OverlayScrollArea(QScrollArea):
     """Класс области прокрутки с накладываемыми пользовательскими скроллбарами"""
     
     def __init__(self, widget, bg_alpha=30, handle_alpha=80, 
                  hover_alpha=120, pressed_alpha=160,
-                 scroll_bar_width=8, auto_hide=False, use_dark_theme=False):
+                 scroll_bar_width=8, auto_hide=False, use_dark_theme=False,
+                 show_duration=300, hide_duration=1000, hide_delay=1000):
         super().__init__()
         
         # Сохраняем параметры
@@ -346,6 +528,9 @@ class OverlayScrollArea(QScrollArea):
         self._auto_hide = auto_hide
         self._use_dark_theme = use_dark_theme
         self._scroll_bar_width = scroll_bar_width
+        self._show_duration = show_duration
+        self._hide_duration = hide_duration
+        self._hide_delay = hide_delay
         
         # Настройка области прокрутки
         self.setWidgetResizable(True)
@@ -356,16 +541,17 @@ class OverlayScrollArea(QScrollArea):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         
-        # Создаем наши пользовательские скроллбары
-        self._v_scroll = TransparentScroller(
-            Qt.Orientation.Vertical, 
+        # Создаем специализированные скроллбары с использованием новых классов
+        self._v_scroll = VerticalScrollBar(
             bg_alpha, handle_alpha, hover_alpha, pressed_alpha,
-            scroll_bar_width, use_dark_theme
+            scroll_bar_width, use_dark_theme, auto_hide,
+            show_duration, hide_duration, hide_delay
         )
-        self._h_scroll = TransparentScroller(
-            Qt.Orientation.Horizontal, 
+        
+        self._h_scroll = HorizontalScrollBar(
             bg_alpha, handle_alpha, hover_alpha, pressed_alpha,
-            scroll_bar_width, use_dark_theme
+            scroll_bar_width, use_dark_theme, auto_hide,
+            show_duration, hide_duration, hide_delay
         )
         
         # Делаем скроллбары дочерними элементами этого виджета
@@ -384,22 +570,6 @@ class OverlayScrollArea(QScrollArea):
         self.verticalScrollBar().valueChanged.connect(self._updateScrollBars)
         self.horizontalScrollBar().valueChanged.connect(self._updateScrollBars)
         
-        # Инициализируем анимации
-        self._v_anim = None
-        self._h_anim = None
-        
-        # Управление видимостью скроллбаров и анимациями
-        if self._auto_hide:
-            # Создаем анимации только при необходимости
-            self._initAnimations()
-            # Начинаем с невидимых скроллбаров
-            self._v_scroll.setOpacity(0.0)
-            self._h_scroll.setOpacity(0.0)
-        else:
-            # Если автоскрытие отключено, просто делаем скроллбары видимыми
-            self._v_scroll.setOpacity(1.0)
-            self._h_scroll.setOpacity(1.0)
-        
         # Таймер для редкого обновления состояния скроллбаров (когда нет прокрутки)
         self._update_timer = QTimer(self)
         self._update_timer.timeout.connect(self._updateScrollBars)
@@ -410,74 +580,6 @@ class OverlayScrollArea(QScrollArea):
         
         # Обновляем скроллбары сразу после инициализации
         QTimer.singleShot(0, self._updateScrollBars)
-    
-    def _initAnimations(self):
-        """Инициализация и настройка анимаций для скроллбаров"""
-        # Создаем анимацию для вертикального скроллбара
-        self._v_anim = QPropertyAnimation(self._v_scroll, b"opacity")
-        self._v_anim.setEasingCurve(QEasingCurve.Type.OutCubic)  # Более плавная кривая
-        
-        # Создаем анимацию для горизонтального скроллбара
-        self._h_anim = QPropertyAnimation(self._h_scroll, b"opacity")
-        self._h_anim.setEasingCurve(QEasingCurve.Type.OutCubic)  # Более плавная кривая
-    
-    def _setupShowAnimation(self):
-        """Настройка анимации появления скроллбаров"""
-        # Настраиваем анимации только если они созданы
-        if self._v_anim and self._h_anim:
-            self._v_anim.setDuration(300)  # Быстрое появление
-            self._v_anim.setEndValue(1.0)
-            
-            self._h_anim.setDuration(300)  # Быстрое появление
-            self._h_anim.setEndValue(1.0)
-    
-    def _setupHideAnimation(self):
-        """Настройка анимации скрытия скроллбаров"""
-        # Настраиваем анимации только если они созданы
-        if self._v_anim and self._h_anim:
-            self._v_anim.setDuration(700)  # Медленное исчезновение
-            self._v_anim.setEndValue(0.0)
-            
-            self._h_anim.setDuration(700)  # Медленное исчезновение
-            self._h_anim.setEndValue(0.0)
-    
-    def _startShowAnimation(self):
-        """Запуск анимации появления скроллбаров"""
-        # Запускаем анимации только если они созданы и нужны
-        if self._auto_hide and self._v_anim and self._h_anim:
-            # Останавливаем текущие анимации
-            self._v_anim.stop()
-            self._h_anim.stop()
-            
-            # Настраиваем анимацию на появление
-            self._setupShowAnimation()
-            
-            # Устанавливаем начальные значения (текущая прозрачность)
-            self._v_anim.setStartValue(self._v_scroll._opacity)
-            self._h_anim.setStartValue(self._h_scroll._opacity)
-            
-            # Запускаем анимации
-            self._v_anim.start()
-            self._h_anim.start()
-    
-    def _startHideAnimation(self):
-        """Запуск анимации скрытия скроллбаров"""
-        # Запускаем анимации только если они созданы и нужны
-        if self._auto_hide and self._v_anim and self._h_anim:
-            # Останавливаем текущие анимации
-            self._v_anim.stop()
-            self._h_anim.stop()
-            
-            # Настраиваем анимацию на скрытие
-            self._setupHideAnimation()
-            
-            # Устанавливаем начальные значения (текущая прозрачность)
-            self._v_anim.setStartValue(self._v_scroll._opacity)
-            self._h_anim.setStartValue(self._h_scroll._opacity)
-            
-            # Запускаем анимации
-            self._v_anim.start()
-            self._h_anim.start()
     
     def setTheme(self, use_dark_theme):
         """Установка темы для всех скроллбаров"""
@@ -496,6 +598,10 @@ class OverlayScrollArea(QScrollArea):
         
         # Пометка, что требуется обновление
         self._update_needed = True
+        
+        # Уведомляем скроллбары о событии прокрутки
+        self._v_scroll.handle_widget_event("scroll")
+        self._h_scroll.handle_widget_event("scroll")
     
     def resizeEvent(self, event):
         """Обработка изменения размера области прокрутки"""
@@ -603,29 +709,24 @@ class OverlayScrollArea(QScrollArea):
         """Обработка входа курсора в область виджета"""
         super().enterEvent(event)
         
-        # Если автоскрытие включено, показываем скроллбары
-        if self._auto_hide:
-            # Настраиваем анимацию появления
-            self._setupShowAnimation()
-            # Запускаем анимацию
-            self._startShowAnimation()
+        # Уведомляем скроллбары о событии входа курсора
+        self._v_scroll.handle_widget_event("enter")
+        self._h_scroll.handle_widget_event("enter")
     
     def leaveEvent(self, event):
         """Обработка выхода курсора за пределы виджета"""
         super().leaveEvent(event)
         
-        # Если автоскрытие включено, скрываем скроллбары
-        if self._auto_hide:
-            # Настраиваем анимацию исчезновения
-            self._setupHideAnimation()
-            # Запускаем анимацию
-            self._startHideAnimation()
+        # Уведомляем скроллбары о событии выхода курсора
+        self._v_scroll.handle_widget_event("leave")
+        self._h_scroll.handle_widget_event("leave")
 
 
 def apply_overlay_scrollbars(widget, bg_alpha=30, handle_alpha=80, 
                              hover_alpha=120, pressed_alpha=160,
                              scroll_bar_width=8, auto_hide=False,
-                             use_dark_theme=False):
+                             use_dark_theme=False,
+                             show_duration=300, hide_duration=1000, hide_delay=1000):
     """
     Применяет настраиваемые прозрачные скроллбары к виджету
     
@@ -638,6 +739,9 @@ def apply_overlay_scrollbars(widget, bg_alpha=30, handle_alpha=80,
         scroll_bar_width: Ширина скроллбаров в пикселях
         auto_hide: Включает автоскрытие скроллбаров с анимацией
         use_dark_theme: Использовать темную тему для скроллбаров
+        show_duration: Длительность анимации появления (мс)
+        hide_duration: Длительность анимации исчезновения (мс)
+        hide_delay: Задержка перед скрытием скроллбаров (мс)
     
     Returns:
         OverlayScrollArea: Область прокрутки с настроенными скроллбарами
@@ -646,7 +750,8 @@ def apply_overlay_scrollbars(widget, bg_alpha=30, handle_alpha=80,
     scroll_area = OverlayScrollArea(
         widget, bg_alpha, handle_alpha, 
         hover_alpha, pressed_alpha, scroll_bar_width,
-        auto_hide, use_dark_theme
+        auto_hide, use_dark_theme,
+        show_duration, hide_duration, hide_delay
     )
     
     return scroll_area

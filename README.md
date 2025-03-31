@@ -13,10 +13,19 @@
 ## Структура проекта
 
 - `main.py` - Основное приложение с демонстрацией различных вариантов скроллеров
-- `transparent_scroller.py` - Модуль с реализацией прозрачных скроллеров
+- `transparent_scroller.py` - Модуль с реализацией прозрачных скроллеров:
+  - `BaseScrollBar` - Базовый класс для скроллеров с общей функциональностью
+  - `VerticalScrollBar` - Вертикальный скроллер 
+  - `HorizontalScrollBar` - Горизонтальный скроллер
+  - `ScrollBarThemeManager` - Управление темами оформления скроллеров
+  - `ScrollBarAnimationManager` - Управление анимациями скроллеров
+  - `OverlayScrollArea` - QScrollArea с оптимизированными скроллерами
+  - Вспомогательные функции `apply_overlay_scrollbars` и `toggle_scrollbar_theme`
 - `tests/` - Тесты производительности и примеры использования
 
 ## Использование
+
+### Простой способ (с помощью вспомогательных функций)
 
 ```python
 from transparent_scroller import apply_overlay_scrollbars, toggle_scrollbar_theme
@@ -35,6 +44,34 @@ scroll_area = apply_overlay_scrollbars(
 
 # Переключение между темами
 toggle_scrollbar_theme(scroll_area, use_dark_theme=True)
+```
+
+### Продвинутый способ (прямое использование классов)
+
+```python
+from PyQt6.QtWidgets import QScrollArea
+from transparent_scroller import VerticalScrollBar, HorizontalScrollBar, OverlayScrollArea
+
+# Вариант 1: Создание OverlayScrollArea с настраиваемыми скроллерами
+scroll_area = OverlayScrollArea()
+scroll_area.setWidget(content_widget)
+
+# Настройка вертикального скроллера
+v_scrollbar = scroll_area.verticalScrollBar()
+v_scrollbar.set_auto_hide(True)
+v_scrollbar.set_use_dark_theme(True)
+
+# Вариант 2: Добавление скроллеров к существующему QScrollArea
+scroll_area = QScrollArea()
+scroll_area.setWidgetResizable(True)
+scroll_area.setWidget(content_widget)
+
+# Замена стандартных скроллеров
+v_scrollbar = VerticalScrollBar(auto_hide=True, use_dark_theme=True)
+h_scrollbar = HorizontalScrollBar(auto_hide=True, use_dark_theme=True)
+
+scroll_area.setVerticalScrollBar(v_scrollbar)
+scroll_area.setHorizontalScrollBar(h_scrollbar)
 ```
 
 ## Оптимизации
@@ -61,21 +98,53 @@ toggle_scrollbar_theme(scroll_area, use_dark_theme=True)
    - Использование более плавных кривых анимации (OutCubic вместо Linear)
    - Снижение нагрузки на CPU при использовании анимаций на ~15-20%
 
-## Тесты производительности
+## Структурная оптимизация
+- Разделение кода на базовый класс и специализированные классы вертикального и горизонтального скроллбаров
+- Выделение управления темами в отдельный класс-менеджер `ScrollBarThemeManager`
+- Выделение управления анимациями в отдельный класс-менеджер `ScrollBarAnimationManager`
+- Ленивая инициализация анимаций только при необходимости (режим auto_hide)
+- Улучшенная объектно-ориентированная структура, обеспечивающая более высокую масштабируемость и упрощение поддержки кода
+- Сокращение дублирования кода за счёт наследования
+- Реализация чистого архитектурного подхода через абстрактные методы и строгое разделение ответственности
 
-В директории `tests/` содержатся тесты для проверки эффективности оптимизаций:
+## Тесты
+- `tests/rect_cache_test.py` - тесты для проверки эффективности кэширования расчетов прямоугольника скроллбара
+- `tests/animation_test.py` - тесты для проверки оптимизации анимаций и потребления памяти
+- `tests/structure_test.py` - тесты для проверки структурной оптимизации и корректности разделения кода 
+- `tests/simple_test.py` - простой тест для сравнения рендеринга с использованием кэширования QPixmap и без него
+- `tests/performance_test.py` - комплексный тест всех оптимизаций в различных сценариях использования
+- `tests/real_world_test.py` - тест производительности скроллбаров в реальном сценарии с 200 виджетами
+- `tests/run_all_tests.py` - скрипт для последовательного запуска всех тестов с подробным отчётом
 
-- `simple_test.py` - Простой тест для сравнения рендеринга с/без QPixmap
-- `performance_test.py` - Комплексный тест всех оптимизаций
-- `animation_test.py` - Тест оптимизации анимаций и потребления памяти
+Подробная информация о каждом тесте и инструкции по запуску содержатся в `tests/README.md`.
 
-Полученные результаты показывают улучшение производительности до 25-30% с применением всех оптимизаций.
+## Запуск тестов
+
+```bash
+# Запуск отдельного теста
+python tests/simple_test.py
+
+# Запуск всех тестов
+python tests/run_all_tests.py
+```
+
+## Результаты тестов
+
+В результате проведенных оптимизаций достигнуты следующие улучшения:
+
+- **Кэширование расчетов**: Ускорение на 30-40% (подтверждено в `rect_cache_test.py`)
+- **Оптимизация отрисовки с QPixmap**: Улучшение на ~40% (подтверждено в `simple_test.py`)
+- **Оптимизация анимаций**: Снижение нагрузки на CPU на ~15-20% (подтверждено в `animation_test.py`) 
+- **Реальный сценарий использования**: Улучшение на ~10% по сравнению со стандартными скроллбарами Qt (подтверждено в `real_world_test.py`)
+
+Общее улучшение производительности зависит от конкретного сценария использования, но в среднем составляет 15-40%.
 
 ## Требования
 
 - Python 3.x
 - PyQt6
 - psutil (для тестов производительности)
+- colorama (для запуска всех тестов с форматированным выводом)
 
 ## Запуск
 

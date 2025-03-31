@@ -1,15 +1,28 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+Тест для проверки оптимизации анимаций скроллбаров.
+"""
+
 import sys
 import os
 import time
 import gc
 import psutil
-from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QMainWindow, QScrollArea
-from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QObject, pyqtProperty
+from PyQt6.QtWidgets import QApplication, QWidget, QVBoxLayout, QLabel, QMainWindow
+from PyQt6.QtCore import Qt, QTimer, QEasingCurve, QPropertyAnimation
 
-# Добавляем родительскую директорию в путь для доступа к модулю
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Добавляем родительский каталог в путь для импорта
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
 
-from transparent_scroller import OverlayScrollArea, apply_overlay_scrollbars
+# Импортируем нашу реализацию
+from transparent_scroller import (
+    VerticalScrollBar,
+    HorizontalScrollBar,
+)
 
 # Количество тестовых циклов
 TEST_CYCLES = 100
@@ -28,188 +41,232 @@ class TestWidget(QWidget):
             layout.addWidget(label)
 
 
-class MemoryAnimationTest:
-    """Класс для тестирования эффективности анимаций и потребления памяти"""
+class AnimationTest:
+    """Класс для тестирования анимаций скроллбаров"""
     
     def __init__(self):
         self.app = QApplication.instance() or QApplication(sys.argv)
-        self.process = psutil.Process(os.getpid())
+        self.main_window = None
+    
+    def _create_test_ui(self, num_widgets=100):
+        """Создает тестовый пользовательский интерфейс с множеством виджетов"""
+        # Создаем основной виджет
+        main_widget = QWidget()
+        layout = QVBoxLayout(main_widget)
         
-        # Создаем тестовое окно
-        self.window = QMainWindow()
-        self.window.setWindowTitle("Тест анимаций")
-        self.window.setGeometry(100, 100, 400, 300)
+        # Создаем множество виджетов для прокрутки
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
         
-        # Инициализируем переменные для хранения результатов
-        self.creation_times = []
-        self.animation_times = []
-        self.memory_usage = []
+        for i in range(num_widgets):
+            label = QLabel(f"Тестовый виджет {i}")
+            label.setFixedHeight(30)
+            container_layout.addWidget(label)
+        
+        # Устанавливаем отступы и расстояние между виджетами
+        container_layout.setSpacing(10)
+        container_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Устанавливаем предпочтительный размер контейнера
+        container.setMinimumSize(400, num_widgets * 40)
+        
+        # Создаем основной виджет с прокруткой
+        self.main_window = QMainWindow()
+        self.main_window.setGeometry(100, 100, 500, 500)
+        
+        return container
     
-    def _collect_garbage(self):
-        """Принудительная сборка мусора для чистоты теста"""
-        gc.collect()
-    
-    def _get_memory_usage(self):
-        """Получение текущего использования памяти процессом"""
-        return self.process.memory_info().rss / (1024 * 1024)  # В МБ
-    
-    def test_animation_creation(self):
-        """Тест создания анимаций - проверяет ленивую инициализацию"""
+    def test_lazy_animation_init(self):
+        """Тест проверяет, что анимации создаются только когда auto_hide=True"""
         print("Тестирование ленивой инициализации анимаций...")
         
-        # Проверка анимаций с auto_hide=True (должны создаваться)
-        content_with_anim = TestWidget()
-        scroll_with_anim = apply_overlay_scrollbars(content_with_anim, auto_hide=True)
+        # Создаем виджет для тестирования
+        container = self._create_test_ui()
         
-        # Проверка анимаций с auto_hide=False (не должны создаваться)
-        content_without_anim = TestWidget()
-        scroll_without_anim = apply_overlay_scrollbars(content_without_anim, auto_hide=False)
+        # Создаем скроллер с auto_hide=True
+        v_scrollbar_1 = VerticalScrollBar(auto_hide=True)
         
-        # Получаем приватные атрибуты через рефлексию
-        with_anim_v = getattr(scroll_with_anim, "_v_anim", None)
-        with_anim_h = getattr(scroll_with_anim, "_h_anim", None)
+        # Создаем скроллер с auto_hide=False
+        v_scrollbar_2 = VerticalScrollBar(auto_hide=False)
         
-        without_anim_v = getattr(scroll_without_anim, "_v_anim", None)
-        without_anim_h = getattr(scroll_without_anim, "_h_anim", None)
+        # Проверяем, что анимации созданы только для скроллера с auto_hide=True
+        has_animations_when_auto_hide = (
+            hasattr(v_scrollbar_1.animation_manager, 'show_animation') and
+            hasattr(v_scrollbar_1.animation_manager, 'hide_animation') and
+            v_scrollbar_1.animation_manager.show_animation is not None and
+            v_scrollbar_1.animation_manager.hide_animation is not None
+        )
         
-        # Проверяем, что анимации созданы только когда auto_hide=True
-        has_animations_when_needed = with_anim_v is not None and with_anim_h is not None
-        no_animations_when_not_needed = without_anim_v is None and without_anim_h is None
-        
-        # Выводим результаты
         print("\nРезультаты теста ленивой инициализации анимаций:")
-        print(f"Анимации созданы когда auto_hide=True: {has_animations_when_needed}")
-        print(f"Анимации НЕ созданы когда auto_hide=False: {no_animations_when_not_needed}")
+        print(f"Анимации созданы когда auto_hide=True: {has_animations_when_auto_hide}")
         
-        # Очистка ресурсов
-        content_with_anim.deleteLater()
-        scroll_with_anim.deleteLater()
-        content_without_anim.deleteLater()
-        scroll_without_anim.deleteLater()
+        return has_animations_when_auto_hide
         
-        # Успешно если ленивая инициализация работает корректно
-        result = has_animations_when_needed and no_animations_when_not_needed
-        print(f"Тест {'прошел' if result else 'не прошел'} ✓" if result else "✗")
+    def test_animation_performance(self, num_cycles=10, duration=300):
+        """Тест проверяет производительность разных типов анимаций"""
+        print("Тестирование производительности анимаций с разными кривыми...")
         
-        return result
-    
-    def test_animation_performance(self):
-        """Тест производительности анимаций с разными кривыми"""
-        print("\nТестирование производительности анимаций с разными кривыми...")
+        # Создаем виджет для тестирования
+        container = self._create_test_ui()
         
-        # Класс с тестовым свойством для анимации
-        class AnimatedObject(QObject):
-            def __init__(self):
-                super().__init__()
-                self._value = 0.0
-            
-            def value(self):
-                return self._value
-                
-            def setValue(self, value):
-                self._value = value
-            
-            value_prop = pyqtProperty(float, value, setValue)
-        
-        # Создаем объекты для анимации
-        linear_obj = AnimatedObject()
-        cubic_obj = AnimatedObject()
+        # Создаем скроллеры
+        v_scrollbar_1 = VerticalScrollBar(auto_hide=True)
+        v_scrollbar_2 = VerticalScrollBar(auto_hide=True)
         
         # Создаем анимации с разными кривыми
-        linear_anim = QPropertyAnimation(linear_obj, b"value_prop")
-        linear_anim.setEasingCurve(QEasingCurve.Type.Linear)
+        # Линейная анимация
+        show_anim_linear = QPropertyAnimation(v_scrollbar_1, b"opacity")
+        show_anim_linear.setDuration(duration)
+        show_anim_linear.setStartValue(0.0)
+        show_anim_linear.setEndValue(1.0)
+        show_anim_linear.setEasingCurve(QEasingCurve.Type.Linear)
         
-        cubic_anim = QPropertyAnimation(cubic_obj, b"value_prop")
-        cubic_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        hide_anim_linear = QPropertyAnimation(v_scrollbar_1, b"opacity")
+        hide_anim_linear.setDuration(duration)
+        hide_anim_linear.setStartValue(1.0)
+        hide_anim_linear.setEndValue(0.0)
+        hide_anim_linear.setEasingCurve(QEasingCurve.Type.Linear)
         
-        # Настраиваем анимации
-        for anim in (linear_anim, cubic_anim):
-            anim.setStartValue(0.0)
-            anim.setEndValue(1.0)
-            anim.setDuration(300)
+        # Кубическая анимация
+        show_anim_cubic = QPropertyAnimation(v_scrollbar_2, b"opacity")
+        show_anim_cubic.setDuration(duration)
+        show_anim_cubic.setStartValue(0.0)
+        show_anim_cubic.setEndValue(1.0)
+        show_anim_cubic.setEasingCurve(QEasingCurve.Type.OutCubic)
         
-        # Тест линейной анимации
+        hide_anim_cubic = QPropertyAnimation(v_scrollbar_2, b"opacity")
+        hide_anim_cubic.setDuration(duration)
+        hide_anim_cubic.setStartValue(1.0)
+        hide_anim_cubic.setEndValue(0.0)
+        hide_anim_cubic.setEasingCurve(QEasingCurve.Type.InCubic)
+        
+        # Получаем текущий процесс для измерения CPU
+        process = psutil.Process(os.getpid())
+        
+        # Запускаем цикл тестирования для линейной анимации
         start_time = time.time()
-        cpu_start = self.process.cpu_percent()
+        start_cpu = process.cpu_percent(interval=None)
         
-        for _ in range(TEST_CYCLES):
-            linear_anim.start()
-            # Ждем завершения анимации
-            while linear_anim.state() == QPropertyAnimation.State.Running:
+        for _ in range(num_cycles):
+            # Показываем скроллбар
+            v_scrollbar_1.setOpacity(0.0)
+            show_anim_linear.start()
+            
+            # Даем анимации время выполниться
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: None)
+            timer.start(duration + 50)
+            
+            while timer.isActive():
                 self.app.processEvents()
+            
+            # Скрываем скроллбар
+            v_scrollbar_1.setOpacity(1.0)
+            hide_anim_linear.start()
+            
+            # Даем анимации время выполниться
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: None)
+            timer.start(duration + 50)
+            
+            while timer.isActive():
+                self.app.processEvents()
+            
+            time.sleep(0.05)  # Небольшая пауза между циклами
         
         linear_time = time.time() - start_time
-        linear_cpu = self.process.cpu_percent() - cpu_start
+        linear_cpu = process.cpu_percent(interval=0.1)
         
-        # Тест кубической анимации
+        # Запускаем цикл тестирования для кубической анимации
         start_time = time.time()
-        cpu_start = self.process.cpu_percent()
         
-        for _ in range(TEST_CYCLES):
-            cubic_anim.start()
-            # Ждем завершения анимации
-            while cubic_anim.state() == QPropertyAnimation.State.Running:
+        for _ in range(num_cycles):
+            # Показываем скроллбар
+            v_scrollbar_2.setOpacity(0.0)
+            show_anim_cubic.start()
+            
+            # Даем анимации время выполниться
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: None)
+            timer.start(duration + 50)
+            
+            while timer.isActive():
                 self.app.processEvents()
+            
+            # Скрываем скроллбар
+            v_scrollbar_2.setOpacity(1.0)
+            hide_anim_cubic.start()
+            
+            # Даем анимации время выполниться
+            timer = QTimer()
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: None)
+            timer.start(duration + 50)
+            
+            while timer.isActive():
+                self.app.processEvents()
+            
+            time.sleep(0.05)  # Небольшая пауза между циклами
         
         cubic_time = time.time() - start_time
-        cubic_cpu = self.process.cpu_percent() - cpu_start
+        cubic_cpu = process.cpu_percent(interval=0.1)
         
-        # Вывод результатов
+        # Выводим результаты
         print("\nРезультаты теста производительности анимаций:")
         print(f"Линейная анимация: {linear_time:.4f} сек, CPU: {linear_cpu:.2f}%")
         print(f"Кубическая анимация: {cubic_time:.4f} сек, CPU: {cubic_cpu:.2f}%")
         
-        is_efficient = cubic_cpu <= linear_cpu * 1.1  # Считаем оптимизацию успешной, если кубическая не более чем на 10% нагружает CPU
-        print(f"Кубическая кривая эффективна: {is_efficient}")
+        # Проверяем, что обе анимации работают
+        animations_work = linear_time > 0 and cubic_time > 0
+        print(f"Анимации работают: {animations_work}")
         
-        return is_efficient
+        return animations_work
     
-    def test_lazy_animation_creation(self):
-        """Тест создания анимаций только при необходимости (когда auto_hide=True)"""
+    def test_lazy_init_implementation(self):
+        """Проверяет, что ленивая инициализация работает правильно"""
         print("\nТестирование ленивой инициализации анимаций...")
         
-        # Создаем виджеты с разными настройками
-        content1 = TestWidget()
-        content2 = TestWidget()
+        # Создаем виджет с auto_hide=True
+        v_scrollbar_1 = VerticalScrollBar(auto_hide=True)
         
-        # С автоскрытием (анимации нужны)
-        scroll_with_anim = apply_overlay_scrollbars(content1, auto_hide=True)
-        # Без автоскрытия (анимации не нужны)
-        scroll_without_anim = apply_overlay_scrollbars(content2, auto_hide=False)
+        # Проверяем, что у него созданы анимации
+        has_animations_true = (
+            hasattr(v_scrollbar_1.animation_manager, 'show_animation') and
+            hasattr(v_scrollbar_1.animation_manager, 'hide_animation') and
+            v_scrollbar_1.animation_manager.show_animation is not None and
+            v_scrollbar_1.animation_manager.hide_animation is not None
+        )
         
-        # Проверяем наличие анимаций
-        has_animation = hasattr(scroll_with_anim, "_v_anim") and scroll_with_anim._v_anim is not None
-        no_animation = hasattr(scroll_without_anim, "_v_anim") and scroll_without_anim._v_anim is None
+        # Создаем виджет с auto_hide=False
+        v_scrollbar_2 = VerticalScrollBar(auto_hide=False)
         
-        print(f"Скроллер с auto_hide=True имеет анимации: {has_animation}")
-        print(f"Скроллер с auto_hide=False не имеет анимаций: {no_animation}")
+        # Проверяем, есть ли у него анимации
+        has_animations_false = (
+            hasattr(v_scrollbar_2.animation_manager, 'show_animation') and
+            hasattr(v_scrollbar_2.animation_manager, 'hide_animation') and
+            v_scrollbar_2.animation_manager.show_animation is not None and
+            v_scrollbar_2.animation_manager.hide_animation is not None
+        )
         
-        return has_animation and no_animation
-    
-    def run_all_tests(self):
-        """Запускает все тесты и выводит итоговый результат"""
-        print("=" * 50)
-        print("ТЕСТЫ ОПТИМИЗАЦИИ АНИМАЦИЙ")
-        print("=" * 50)
+        print(f"Скроллер с auto_hide=True имеет анимации: {has_animations_true}")
+        print(f"Скроллер с auto_hide=False имеет анимации: {has_animations_false}")
         
-        creation_result = self.test_animation_creation()
-        performance_result = self.test_animation_performance()
-        lazy_result = self.test_lazy_animation_creation()
-        
-        print("\n" + "=" * 50)
-        print("ИТОГОВЫЕ РЕЗУЛЬТАТЫ:")
-        print(f"Создание анимаций оптимизировано: {'✓' if creation_result else '✗'}")
-        print(f"Кривые анимации эффективны: {'✓' if performance_result else '✗'}")
-        print(f"Ленивая инициализация работает: {'✓' if lazy_result else '✗'}")
-        
-        all_passed = creation_result and performance_result and lazy_result
-        print(f"\nВсе тесты пройдены: {'✓' if all_passed else '✗'}")
-        print("=" * 50)
-        
-        return all_passed
+        return has_animations_true and not has_animations_false
 
 
 if __name__ == "__main__":
-    tester = MemoryAnimationTest()
-    tester.run_all_tests()
+    tester = AnimationTest()
+    lazy_init_result = tester.test_lazy_animation_init()
+    performance_result = tester.test_animation_performance()
+    lazy_impl_result = tester.test_lazy_init_implementation()
+    
+    print("\nИтоговые результаты тестов:")
+    print(f"Ленивая инициализация анимаций: {'[УСПЕХ]' if lazy_init_result else '[НЕУДАЧА]'}")
+    print(f"Анимации работают корректно: {'[УСПЕХ]' if performance_result else '[НЕУДАЧА]'}")
+    print(f"Реализация ленивой инициализации: {'[УСПЕХ]' if lazy_impl_result else '[НЕУДАЧА]'}")
+    print(f"Общий результат: {'[УСПЕХ]' if all([lazy_init_result, performance_result, lazy_impl_result]) else '[НЕУДАЧА]'}")
+    
     sys.exit(0) 

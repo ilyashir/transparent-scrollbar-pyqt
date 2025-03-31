@@ -195,4 +195,14 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = TestWindow()
     window.run_test()
-    sys.exit(app.exec()) 
+    
+    # Закрываем окно после выполнения тестов
+    window.close()
+    
+    # Получаем результаты теста для определения кода возврата
+    time_normal = window._test_scrollbar(window.normal_scrollbar)
+    time_pixmap = window._test_scrollbar(window.pixmap_scrollbar)
+    
+    # Выходим с кодом 0 (успех), если оптимизированная версия быстрее
+    # или с кодом 1 (ошибка), если оптимизация не работает
+    sys.exit(0 if time_pixmap < time_normal else 1) 

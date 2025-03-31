@@ -17,7 +17,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 
 # Импортируем нашу оптимизированную версию
-from transparent_scroller import TransparentScroller
+from transparent_scroller import VerticalScrollBar
 
 # Константы для тестирования
 TEST_CYCLES = 10000  # Количество циклов для теста
@@ -87,7 +87,7 @@ class RectCacheTest:
         self.app = QApplication(sys.argv)
         
         # Создаем тестовые скроллбары
-        self.cached_scroll = TransparentScroller(Qt.Orientation.Vertical)
+        self.cached_scroll = VerticalScrollBar()
         self.raw_scroll = RawScrollBar(Qt.Orientation.Vertical)
         
         # Настраиваем диапазоны для тестов
@@ -211,7 +211,12 @@ class RectCacheTest:
         
         # Общий результат тестов
         overall_success = scenario1_success and scenario2_success and scenario3_success
-        print(f"\nОбщий результат тестов сценариев: {'Успех ✓' if overall_success else 'Неудача ✗'}")
+        print(f"\nСценарий 1 (Повторяющиеся запросы): {'[УСПЕХ]' if scenario1_success else '[НЕУДАЧА]'}")
+        print(f"Сценарий 2 (Чередующиеся значения): {'[УСПЕХ]' if scenario2_success else '[НЕУДАЧА]'}")
+        print(f"Сценарий 3 (Изменение параметров): {'[УСПЕХ]' if scenario3_success else '[НЕУДАЧА]'}")
+        
+        # Общий результат
+        print(f"\nОбщий результат тестов сценариев: {'[УСПЕХ]' if overall_success else '[НЕУДАЧА]'}")
         
         return overall_success
     
@@ -233,9 +238,9 @@ class RectCacheTest:
         print("ОБЩИЙ РЕЗУЛЬТАТ ТЕСТОВ:")
         print("=" * 50)
         
-        print(f"Тест производительности: {'Успех ✓' if performance_result else 'Неудача ✗'}")
-        print(f"Тест сценариев использования кэша: {'Успех ✓' if scenarios_result else 'Неудача ✗'}")
-        print(f"Общий результат: {'Успех ✓' if performance_result and scenarios_result else 'Неудача ✗'}")
+        print(f"Тест производительности: {'[УСПЕХ]' if performance_result else '[НЕУДАЧА]'}")
+        print(f"Тест сценариев использования кэша: {'[УСПЕХ]' if scenarios_result else '[НЕУДАЧА]'}")
+        print(f"Общий результат: {'[УСПЕХ]' if performance_result and scenarios_result else '[НЕУДАЧА]'}")
         
         # Завершаем работу приложения и возвращаемся из функции main
         return
