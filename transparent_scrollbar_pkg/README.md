@@ -4,11 +4,12 @@
 
 ## Установка
 
-```bash
 # Из директории с файлом setup.py
+```bash
 pip install .
-
+```
 # Или напрямую из GitHub
+```bash
 pip install git+https://github.com/ilyashir/transparent-scrollbar-pyqt.git#subdirectory=transparent_scrollbar_pkg
 ```
 
