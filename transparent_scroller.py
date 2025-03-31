@@ -64,6 +64,14 @@ class TransparentScroller(QScrollBar):
         self._cached_slider_rect = None
         self._cache_dirty = True
         
+        # Кэширование параметров для промежуточных расчетов
+        self._cached_params = None  # Кэш параметров (min, max, page_step, value)
+        self._cached_ratios = None  # Кэш соотношений (handle_size_ratio, position_ratio)
+        
+        # Статистика использования кэша
+        self._cache_hits = 0
+        self._cache_misses = 0
+        
         # Соединяем сигналы, которые влияют на геометрию ползунка
         self.valueChanged.connect(self._invalidateCache)
         self.rangeChanged.connect(self._invalidateCache)
@@ -77,6 +85,9 @@ class TransparentScroller(QScrollBar):
         """Отмечает кэш как устаревший"""
         self._cache_dirty = True
         self._pixmap_cache_dirty = True
+        # Сбрасываем кэш промежуточных вычислений
+        self._cached_params = None
+        self._cached_ratios = None
     
     def _initColors(self):
         """Инициализирует цвета скроллбара на основе темы"""
@@ -192,32 +203,39 @@ class TransparentScroller(QScrollBar):
     def _calculateSliderRect(self):
         """Вычисляет прямоугольник ползунка скроллбара"""
         # Проверяем, можно ли использовать кэшированное значение
+        # Быстрая проверка без обращения к более сложным данным
         if not self._cache_dirty and self._cached_slider_rect is not None:
+            self._cache_hits += 1
             return self._cached_slider_rect
-            
-        # Получаем основные параметры скроллбара
-        minimum = self.minimum()
-        maximum = self.maximum()
+        
+        # Если дошли до этой точки, значит нужно пересчитать
+        self._cache_misses += 1
+        
+        # Получаем основные параметры скроллбара эффективным способом
+        # (значения сразу, без получения их через методы)
+        min_val = self.minimum()
+        max_val = self.maximum()
         page_step = self.pageStep()
         value = self.value()
+        width = self.width()
+        height = self.height()
         
         # Если нет диапазона для прокрутки, занимаем всю доступную область
-        if maximum <= minimum:
+        if max_val <= min_val:
             rect = self.rect().adjusted(2, 2, -2, -2)
             self._cached_slider_rect = rect
             self._cache_dirty = False
+            self._cached_params = (min_val, max_val, page_step, value, width, height)
             return rect
         
         # Вычисляем размер ползунка в процентах от общего размера скроллбара
-        # с учетом видимой области (pageStep)
-        handle_size_ratio = min(1.0, page_step / (maximum - minimum + page_step))
+        handle_size_ratio = min(1.0, page_step / (max_val - min_val + page_step))
         
         # Вычисляем положение ползунка в процентах
-        position_ratio = (value - minimum) / (maximum - minimum)
+        position_ratio = (value - min_val) / (max_val - min_val)
         
-        # Размеры скроллбара
-        width = self.width()
-        height = self.height()
+        # Оптимизация: сохраняем эти соотношения для повторного использования
+        self._cached_ratios = (handle_size_ratio, position_ratio)
         
         # Отступы от краев (для эстетики)
         margin = 2
@@ -247,10 +265,22 @@ class TransparentScroller(QScrollBar):
                 height - 2 * margin
             )
         
-        # Кэшируем результат
+        # Кэшируем результат и сохраняем параметры, при которых он был вычислен
         self._cached_slider_rect = rect
+        self._cached_params = (min_val, max_val, page_step, value, width, height)
         self._cache_dirty = False
         return rect
+    
+    def getCacheStats(self):
+        """Возвращает статистику использования кэша"""
+        total = self._cache_hits + self._cache_misses
+        hit_rate = (self._cache_hits / total * 100) if total > 0 else 0
+        return {
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "total": total,
+            "hit_rate": hit_rate
+        }
     
     def mousePressEvent(self, event):
         """Обработка нажатия мыши"""
