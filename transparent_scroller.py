@@ -38,7 +38,8 @@ class BaseScrollBar(QScrollBar):
     
     def __init__(self, orientation, bg_alpha=30, handle_alpha=80, 
                  hover_alpha=120, pressed_alpha=160,
-                 scroll_bar_width=8, use_dark_theme=False):
+                 scroll_bar_width=8, use_dark_theme=False,
+                 auto_hide=True, show_duration=300, hide_duration=1000, hide_delay=1000):
         super().__init__(orientation)
         
         # Устанавливаем ориентацию
@@ -93,6 +94,11 @@ class BaseScrollBar(QScrollBar):
         self._pixmap_cache = None
         self._pixmap_cache_dirty = True
         self._last_state = None
+        
+        # Менеджер анимаций
+        self.animation_manager = ScrollBarAnimationManager(
+            self, auto_hide, show_duration, hide_duration, hide_delay
+        )
     
     def _configure_size(self, scroll_bar_width):
         """Настраивает размер скроллбара в зависимости от ориентации"""
@@ -146,39 +152,9 @@ class BaseScrollBar(QScrollBar):
     # Определяем свойство для анимации
     opacity = pyqtProperty(float, opacity, setOpacity)
     
-    def _renderToPixmap(self, handle_color):
-        """Отрисовывает скроллер в QPixmap для кэширования"""
-        # Создаем пиксмап размером с виджет
-        pixmap = QPixmap(self.size())
-        pixmap.fill(Qt.GlobalColor.transparent)  # Прозрачный фон
-        
-        # Создаем QPainter для рисования на пиксмапе
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
-        # Получаем размеры скроллбара
-        rect = self.rect()
-        
-        # Рисуем фон скроллбара
-        painter.fillRect(rect, self._bg_color)
-        
-        # Получаем размеры и положение ползунка
-        handle_rect = self._calculateSliderRect()
-        
-        # Рисуем ползунок с закругленными углами
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(handle_color)
-        
-        # Радиус закругления углов
-        radius = 4
-        
-        # Рисуем закругленный прямоугольник
-        painter.drawRoundedRect(handle_rect, radius, radius)
-        
-        # Завершаем рисование
-        painter.end()
-        
-        return pixmap
+    def handle_widget_event(self, event_type):
+        """Обрабатывает события виджета для анимации"""
+        self.animation_manager.handle_widget_event(event_type)
     
     def _getCurrentState(self):
         """Возвращает текущее состояние скроллера для определения необходимости перерисовки"""
@@ -210,7 +186,7 @@ class BaseScrollBar(QScrollBar):
             else:
                 handle_color = self._handle_color
             
-            # Рендерим виджет в пиксмап
+            # Рендерим виджет в пиксмап только если нужно отображать
             self._pixmap_cache = self._renderToPixmap(handle_color)
             self._pixmap_cache_dirty = False
             self._last_state = current_state
@@ -219,6 +195,52 @@ class BaseScrollBar(QScrollBar):
         painter = QPainter(self)
         painter.setOpacity(self._opacity)
         painter.drawPixmap(0, 0, self._pixmap_cache)
+    
+    def _renderToPixmap(self, handle_color):
+        """Отрисовывает скроллер в QPixmap для кэширования"""
+        # Получаем размеры скроллбара
+        size = self.size()
+        
+        # Оптимизация: если размер слишком маленький, нет смысла кэшировать
+        if size.width() <= 1 or size.height() <= 1:
+            return QPixmap()
+            
+        # Создаем пиксмап размером с виджет
+        pixmap = QPixmap(size)
+        pixmap.fill(Qt.GlobalColor.transparent)  # Прозрачный фон
+        
+        # Создаем QPainter для рисования на пиксмапе
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Получаем размеры скроллбара
+        rect = self.rect()
+        
+        # Рисуем фон скроллбара
+        painter.fillRect(rect, self._bg_color)
+        
+        # Получаем размеры и положение ползунка
+        handle_rect = self._calculateSliderRect()
+        
+        # Проверка размеров ползунка - если слишком маленький, пропускаем отрисовку
+        if handle_rect.width() <= 1 or handle_rect.height() <= 1:
+            painter.end()
+            return pixmap
+        
+        # Рисуем ползунок с закругленными углами
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(handle_color)
+        
+        # Радиус закругления углов (пропорционально размеру ползунка)
+        radius = min(4, min(handle_rect.width(), handle_rect.height()) / 2)
+        
+        # Рисуем закругленный прямоугольник
+        painter.drawRoundedRect(handle_rect, radius, radius)
+        
+        # Завершаем рисование
+        painter.end()
+        
+        return pixmap
     
     def _calculateSliderRect(self):
         """Вычисляет прямоугольник ползунка скроллбара"""
@@ -285,46 +307,57 @@ class BaseScrollBar(QScrollBar):
             "hit_rate": hit_rate
         }
     
+    def _updateMouseState(self, event, is_pressed=None, is_over=None):
+        """Обновляет состояние мыши и инвалидирует кэш если необходимо"""
+        update_needed = False
+        
+        # Обновляем состояние нажатия, если оно изменилось
+        if is_pressed is not None and is_pressed != self._mouse_pressed:
+            self._mouse_pressed = is_pressed
+            update_needed = True
+        
+        # Если передано событие, проверяем положение курсора относительно ползунка
+        if event and is_over is None:
+            handle_rect = self._calculateSliderRect()
+            is_over = handle_rect.contains(event.pos())
+        
+        # Обновляем состояние наведения, если оно изменилось
+        if is_over is not None and is_over != self._mouse_over:
+            self._mouse_over = is_over
+            update_needed = True
+        
+        # Инвалидируем кэш и перерисовываем только если что-то изменилось
+        if update_needed:
+            self._pixmap_cache_dirty = True
+            self.update()
+            
+        return update_needed
+    
     def mousePressEvent(self, event):
         """Обработка нажатия мыши"""
         super().mousePressEvent(event)
-        self._mouse_pressed = True
-        self._pixmap_cache_dirty = True  # Инвалидируем кэш
-        self.update()
+        self._updateMouseState(event, is_pressed=True)
     
     def mouseReleaseEvent(self, event):
         """Обработка отпускания кнопки мыши"""
         super().mouseReleaseEvent(event)
-        self._mouse_pressed = False
-        self._pixmap_cache_dirty = True  # Инвалидируем кэш
-        self.update()
+        self._updateMouseState(event, is_pressed=False)
     
     def mouseMoveEvent(self, event):
         """Обработка движения мыши"""
         super().mouseMoveEvent(event)
-        
-        # Проверяем, находится ли курсор над ползунком
-        handle_rect = self._calculateSliderRect()
-        was_over = self._mouse_over
-        self._mouse_over = handle_rect.contains(event.pos())
-        
-        # Если состояние изменилось, перерисовываем
-        if was_over != self._mouse_over:
-            self._pixmap_cache_dirty = True  # Инвалидируем кэш
-            self.update()
+        self._updateMouseState(event)
     
     def enterEvent(self, event):
         """Обработка входа курсора в область виджета"""
         super().enterEvent(event)
-        # При входе курсора мыши инвалидируем кэш, так как может измениться состояние
-        self._pixmap_cache_dirty = True
+        # При входе не меняем состояние наведения, 
+        # т.к. курсор может быть не над ползунком
     
     def leaveEvent(self, event):
         """Обработка выхода курсора из области виджета"""
         super().leaveEvent(event)
-        self._mouse_over = False
-        self._pixmap_cache_dirty = True  # Инвалидируем кэш
-        self.update()
+        self._updateMouseState(None, is_over=False)
     
     def resizeEvent(self, event):
         """Обработка изменения размера"""
@@ -452,12 +485,8 @@ class VerticalScrollBar(BaseScrollBar):
                  scroll_bar_width=8, use_dark_theme=False, auto_hide=True,
                  show_duration=300, hide_duration=1000, hide_delay=1000):
         super().__init__(Qt.Orientation.Vertical, bg_alpha, handle_alpha, 
-                          hover_alpha, pressed_alpha, scroll_bar_width, use_dark_theme)
-        
-        # Создаем менеджер анимаций
-        self.animation_manager = ScrollBarAnimationManager(
-            self, auto_hide, show_duration, hide_duration, hide_delay
-        )
+                          hover_alpha, pressed_alpha, scroll_bar_width, use_dark_theme,
+                          auto_hide, show_duration, hide_duration, hide_delay)
     
     def _calculateOrientedRect(self, handle_size_ratio, position_ratio, margin, width, height):
         """Вычисляет прямоугольник ползунка для вертикального скроллбара"""
@@ -472,10 +501,6 @@ class VerticalScrollBar(BaseScrollBar):
         
         # Создаем прямоугольник для ползунка
         return QRect(margin, handle_y, width - 2 * margin, handle_height)
-    
-    def handle_widget_event(self, event_type):
-        """Обрабатывает события виджета для анимации"""
-        self.animation_manager.handle_widget_event(event_type)
 
 
 class HorizontalScrollBar(BaseScrollBar):
@@ -485,12 +510,8 @@ class HorizontalScrollBar(BaseScrollBar):
                  scroll_bar_width=8, use_dark_theme=False, auto_hide=True,
                  show_duration=300, hide_duration=1000, hide_delay=1000):
         super().__init__(Qt.Orientation.Horizontal, bg_alpha, handle_alpha, 
-                          hover_alpha, pressed_alpha, scroll_bar_width, use_dark_theme)
-        
-        # Создаем менеджер анимаций
-        self.animation_manager = ScrollBarAnimationManager(
-            self, auto_hide, show_duration, hide_duration, hide_delay
-        )
+                          hover_alpha, pressed_alpha, scroll_bar_width, use_dark_theme,
+                          auto_hide, show_duration, hide_duration, hide_delay)
     
     def _calculateOrientedRect(self, handle_size_ratio, position_ratio, margin, width, height):
         """Вычисляет прямоугольник ползунка для горизонтального скроллбара"""
@@ -505,10 +526,6 @@ class HorizontalScrollBar(BaseScrollBar):
         
         # Создаем прямоугольник для ползунка
         return QRect(handle_x, margin, handle_width, height - 2 * margin)
-    
-    def handle_widget_event(self, event_type):
-        """Обрабатывает события виджета для анимации"""
-        self.animation_manager.handle_widget_event(event_type)
 
 
 class OverlayScrollArea(QScrollArea):
@@ -578,6 +595,19 @@ class OverlayScrollArea(QScrollArea):
         # Флаг для отслеживания необходимости обновления
         self._update_needed = True
         
+        # Новые поля для отслеживания состояния и оптимизации обновлений
+        self._last_v_range = (0, 0)
+        self._last_h_range = (0, 0)
+        self._last_v_value = 0
+        self._last_h_value = 0 
+        self._last_v_page_step = 0
+        self._last_h_page_step = 0
+        self._last_v_visible = False
+        self._last_h_visible = False
+        
+        # Минимальная дельта для значимых изменений (в процентах)
+        self._min_value_delta_percent = 1.0  # 1% от диапазона
+        
         # Обновляем скроллбары сразу после инициализации
         QTimer.singleShot(0, self._updateScrollBars)
     
@@ -621,44 +651,85 @@ class OverlayScrollArea(QScrollArea):
         self._updateScrollBars()
     
     def _updateScrollBars(self):
-        """Обновляет параметры и состояние скроллбаров"""
-        # Проверяем, нужно ли обновление
+        """Обновляет параметры и состояние скроллбаров с оптимизацией количества обновлений"""
+        # Получаем стандартные скроллбары
         v_bar = self.verticalScrollBar()
         h_bar = self.horizontalScrollBar()
         
-        # Проверка на изменение размеров или значений скроллбаров
-        v_visible = v_bar.maximum() > v_bar.minimum()
-        h_visible = h_bar.maximum() > h_bar.minimum()
+        # Текущие значения и диапазоны
+        v_min = v_bar.minimum()
+        v_max = v_bar.maximum()
+        h_min = h_bar.minimum()
+        h_max = h_bar.maximum()
+        v_value = v_bar.value()
+        h_value = h_bar.value()
+        v_page_step = v_bar.pageStep()
+        h_page_step = h_bar.pageStep()
         
-        # Проверка на изменение видимости скроллбаров
-        v_visibility_changed = v_visible != self._v_scroll.isVisible()
-        h_visibility_changed = h_visible != self._h_scroll.isVisible()
+        # Определяем видимость скроллбаров
+        v_visible = v_max > v_min
+        h_visible = h_max > h_min
         
-        # Проверка на изменение значений скроллбаров
-        v_value_changed = self._v_scroll.value() != v_bar.value()
-        h_value_changed = self._h_scroll.value() != h_bar.value()
+        # Вычисляем изменения в процентах для значений
+        v_range = max(1, v_max - v_min)  # Избегаем деления на ноль
+        h_range = max(1, h_max - h_min)  # Избегаем деления на ноль
         
-        # Выполняем обновление только если что-то изменилось
-        if (self._update_needed or v_visibility_changed or h_visibility_changed 
-            or v_value_changed or h_value_changed):
+        v_value_delta_percent = 0 if not v_visible else abs(v_value - self._last_v_value) * 100 / v_range
+        h_value_delta_percent = 0 if not h_visible else abs(h_value - self._last_h_value) * 100 / h_range
+        
+        # Проверяем необходимость обновления
+        range_changed = ((v_min, v_max) != self._last_v_range or 
+                         (h_min, h_max) != self._last_h_range)
+        
+        page_step_changed = (v_page_step != self._last_v_page_step or 
+                            h_page_step != self._last_h_page_step)
+        
+        visibility_changed = (v_visible != self._last_v_visible or 
+                             h_visible != self._last_h_visible)
+        
+        # Значительное изменение значения (больше минимальной дельты)
+        significant_value_change = (v_value_delta_percent > self._min_value_delta_percent or 
+                                   h_value_delta_percent > self._min_value_delta_percent)
+        
+        # Обновляем только если есть значимые изменения или принудительное обновление
+        if (self._update_needed or range_changed or page_step_changed or 
+            visibility_changed or significant_value_change):
             
-            # Обновляем диапазоны скроллбаров
-            self._v_scroll.setRange(v_bar.minimum(), v_bar.maximum())
-            self._v_scroll.setPageStep(v_bar.pageStep())
-            self._v_scroll.setSingleStep(v_bar.singleStep())
-            self._v_scroll.setValue(v_bar.value())
+            # Обновляем диапазоны только при изменении
+            if range_changed or page_step_changed:
+                self._v_scroll.setRange(v_min, v_max)
+                self._v_scroll.setPageStep(v_page_step)
+                self._v_scroll.setSingleStep(v_bar.singleStep())
+                
+                self._h_scroll.setRange(h_min, h_max)
+                self._h_scroll.setPageStep(h_page_step)
+                self._h_scroll.setSingleStep(h_bar.singleStep())
+                
+                # Обновляем сохраненные значения
+                self._last_v_range = (v_min, v_max)
+                self._last_h_range = (h_min, h_max)
+                self._last_v_page_step = v_page_step
+                self._last_h_page_step = h_page_step
             
-            self._h_scroll.setRange(h_bar.minimum(), h_bar.maximum())
-            self._h_scroll.setPageStep(h_bar.pageStep())
-            self._h_scroll.setSingleStep(h_bar.singleStep())
-            self._h_scroll.setValue(h_bar.value())
+            # Обновляем значения, только если они значительно изменились
+            if significant_value_change:
+                if v_value_delta_percent > self._min_value_delta_percent:
+                    self._v_scroll.setValue(v_value)
+                    self._last_v_value = v_value
+                
+                if h_value_delta_percent > self._min_value_delta_percent:
+                    self._h_scroll.setValue(h_value)
+                    self._last_h_value = h_value
             
-            # Обновляем видимость скроллбаров
-            self._v_scroll.setVisible(v_visible)
-            self._h_scroll.setVisible(h_visible)
-            
-            # Обновляем положение и размеры скроллбаров
-            self._updateScrollBarsGeometry()
+            # Обновляем видимость при изменении
+            if visibility_changed:
+                self._v_scroll.setVisible(v_visible)
+                self._h_scroll.setVisible(h_visible)
+                self._last_v_visible = v_visible
+                self._last_h_visible = h_visible
+                
+                # При изменении видимости обновляем геометрию
+                self._updateScrollBarsGeometry()
             
             # Сбрасываем флаг необходимости обновления
             self._update_needed = False
