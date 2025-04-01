@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name="transparent_scrollbar",
-    version="0.1.1",
+    version="0.5.0",
     description="Transparent scrollbars for PyQt6",
     author="Ilya Shirokolobov",
     author_email="ilya.shirokolobov@gmail.com",

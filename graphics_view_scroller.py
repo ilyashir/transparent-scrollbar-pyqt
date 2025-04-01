@@ -2,6 +2,35 @@ from PyQt6.QtWidgets import QScrollBar, QGraphicsView
 from PyQt6.QtCore import Qt, QRect, pyqtProperty, QTimer, QObject, QPropertyAnimation
 from PyQt6.QtGui import QPainter, QColor
 
+# Предопределенные цвета для тем
+LIGHT_THEME = {
+    "bg_color": QColor(200, 200, 200, 30),
+    "handle_color": QColor(150, 150, 150, 80),
+    "hover_color": QColor(80, 80, 80, 120),
+    "pressed_color": QColor(40, 40, 40, 160)
+}
+
+DARK_THEME = {
+    "bg_color": QColor(80, 80, 80, 30),
+    "handle_color": QColor(120, 120, 120, 80),
+    "hover_color": QColor(200, 200, 200, 120),
+    "pressed_color": QColor(240, 240, 240, 160)
+}
+
+class GraphicsViewScrollBarThemeManager:
+    """Менеджер тем для скроллбаров QGraphicsView"""
+    
+    @staticmethod
+    def get_theme_colors(theme="light"):
+        """Возвращает цвета для выбранной темы"""
+        return DARK_THEME if theme == "dark" else LIGHT_THEME
+    
+    @staticmethod
+    def apply_theme(scrollbar, theme="light"):
+        """Применяет тему к скроллбару"""
+        if hasattr(scrollbar, 'setTheme'):
+            scrollbar.setTheme(theme)
+
 class GraphicsViewScrollBar(QScrollBar):
     """Базовый класс для настраиваемых скроллбаров QGraphicsView"""
     
@@ -24,7 +53,7 @@ class GraphicsViewScrollBar(QScrollBar):
         self._opacity = 1.0
         
         # Настройка темы
-        self._use_dark_theme = use_dark_theme
+        self._theme = "dark" if use_dark_theme else "light"
         
         # Состояние скроллбара
         self._mouse_over = False
@@ -95,12 +124,12 @@ class GraphicsViewScrollBar(QScrollBar):
         
         # Отслеживаем изменение размера и события мыши в GraphicsView
         view.installEventFilter(self)
+                
+         # Проверяем необходимость скроллбара и показываем/скрываем его
+        self._update_visibility()
         
         # Также отслеживаем события для viewport
         view.viewport().installEventFilter(self)
-        
-        # Проверяем необходимость скроллбара и показываем/скрываем его
-        self._update_visibility()
     
     def _on_view_destroyed(self):
         """Обработчик события уничтожения view"""
@@ -117,18 +146,17 @@ class GraphicsViewScrollBar(QScrollBar):
     
     def _init_colors(self):
         """Инициализирует цвета в зависимости от темы"""
-        if self._use_dark_theme:
-            # Темная тема
-            self._bg_color = QColor(80, 80, 80, self._bg_alpha)
-            self._handle_color = QColor(120, 120, 120, self._handle_alpha)
-            self._hover_color = QColor(200, 200, 200, self._hover_alpha)
-            self._pressed_color = QColor(240, 240, 240, self._pressed_alpha)
-        else:
-            # Светлая тема
-            self._bg_color = QColor(200, 200, 200, self._bg_alpha)
-            self._handle_color = QColor(150, 150, 150, self._handle_alpha)
-            self._hover_color = QColor(80, 80, 80, self._hover_alpha)
-            self._pressed_color = QColor(40, 40, 40, self._pressed_alpha)
+        colors = GraphicsViewScrollBarThemeManager.get_theme_colors(self._theme)
+        self._bg_color = colors["bg_color"]
+        self._handle_color = colors["handle_color"]
+        self._hover_color = colors["hover_color"]
+        self._pressed_color = colors["pressed_color"]
+        
+        # Устанавливаем прозрачность
+        self._bg_color.setAlpha(self._bg_alpha)
+        self._handle_color.setAlpha(self._handle_alpha)
+        self._hover_color.setAlpha(self._hover_alpha)
+        self._pressed_color.setAlpha(self._pressed_alpha)
     
     def _sync_from_native(self):
         """Синхронизирует параметры с нативным скроллбаром"""
@@ -176,6 +204,7 @@ class GraphicsViewScrollBar(QScrollBar):
         if not self._view:
             return
             
+        
         viewport = self._view.viewport()
         if not viewport:
             return
@@ -237,7 +266,7 @@ class GraphicsViewScrollBar(QScrollBar):
                     self.show_scrollbar()
                 # Обновляем видимость при изменении размера viewport
                 elif event.type() == event.Type.Resize:
-                    QTimer.singleShot(0, self._update_visibility)
+                     QTimer.singleShot(0, self._update_visibility)    
         except RuntimeError:
             # Если объект был удален, отключаем фильтр событий
             self._view_deleted = True
@@ -395,17 +424,17 @@ class GraphicsViewScrollBar(QScrollBar):
         if not hasattr(self, '_hide_timer'):
             return
             
-        # Проверяем необходимость скроллбара перед показом
+        # Останавливаем таймер и анимацию скрытия
+        self._hide_timer.stop()
+        if self._hide_animation.state() == self._hide_animation.State.Running:
+            self._hide_animation.stop()
+        
+        # Проверяем необходимость скроллбара
         self._update_visibility()
         
         # Если скроллбар не нужен, не показываем его
         if not self.isVisible():
             return
-            
-        # Останавливаем таймер и анимацию скрытия
-        self._hide_timer.stop()
-        if self._hide_animation.state() == self._hide_animation.State.Running:
-            self._hide_animation.stop()
         
         # Запускаем анимацию показа
         current_opacity = self._opacity
@@ -428,8 +457,8 @@ class GraphicsViewScrollBar(QScrollBar):
         current_opacity = self._opacity
         if current_opacity > 0.0:
             self._hide_animation.setStartValue(current_opacity)
-            self._hide_animation.start()
-    
+            self._hide_animation.start()  # Запускаем анимацию скрытия
+
     def _update_visibility(self):
         """Обновление видимости скроллбара"""
         if not self._view or not self._native_scrollbar:
@@ -463,7 +492,21 @@ class GraphicsViewScrollBar(QScrollBar):
         super().resizeEvent(event)
         if self._view:
             self._update_geometry()
-            self._update_visibility()
+            self._update_visibility()        
+    
+    def setTheme(self, theme):
+        """Устанавливает тему скроллбара"""
+        if theme not in ["light", "dark"]:
+            return
+            
+        self._theme = theme
+        self._init_colors()
+        self.update()
+    
+    def toggle_theme(self):
+        """Переключает тему скроллбара"""
+        new_theme = "dark" if self._theme == "light" else "light"
+        self.setTheme(new_theme)
 
 
 class GraphicsViewVerticalScrollBar(GraphicsViewScrollBar):
@@ -568,6 +611,30 @@ class GraphicsViewScrollManager(QObject):
         except RuntimeError:
             # Игнорируем ошибки при доступе к удаленным объектам
             pass
+    
+    def setTheme(self, theme):
+        """Устанавливает тему для обоих скроллбаров"""
+        if self._view_deleted:
+            return
+            
+        try:
+            self.vsb.setTheme(theme)
+            self.hsb.setTheme(theme)
+        except RuntimeError:
+            self._view_deleted = True
+            self.view = None
+    
+    def toggle_theme(self):
+        """Переключает тему для обоих скроллбаров"""
+        if self._view_deleted:
+            return
+            
+        try:
+            self.vsb.toggle_theme()
+            self.hsb.toggle_theme()
+        except RuntimeError:
+            self._view_deleted = True
+            self.view = None
 
 def apply_scrollbars_to_graphics_view(view, bg_alpha=30, handle_alpha=80, 
                                      hover_alpha=120, pressed_alpha=160,
@@ -609,4 +676,16 @@ def apply_scrollbars_to_graphics_view(view, bg_alpha=30, handle_alpha=80,
         # Сохраняем ссылку на менеджер в атрибуте view для защиты от сборщика мусора
         view._scroll_manager = GraphicsViewScrollManager(view, vsb, hsb)
     
-    return (vsb, hsb) 
+    return (vsb, hsb)
+
+
+def toggle_graphics_view_scrollbar_theme(view, use_dark_theme=False):
+    """
+    Переключает тему скроллбаров QGraphicsView
+    
+    Args:
+        view: QGraphicsView, для которого нужно переключить тему
+        use_dark_theme: Использовать темную тему
+    """
+    if hasattr(view, '_scroll_manager'):
+        view._scroll_manager.setTheme("dark" if use_dark_theme else "light") 

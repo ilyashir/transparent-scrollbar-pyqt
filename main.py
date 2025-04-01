@@ -10,7 +10,8 @@ from PyQt6.QtGui import QPalette, QColor, QFont, QBrush, QPen
 
 from transparent_scroller import (apply_overlay_scrollbars, toggle_scrollbar_theme, 
                                 VerticalScrollBar, HorizontalScrollBar, OverlayScrollArea)
-from graphics_view_scroller import apply_scrollbars_to_graphics_view
+from graphics_view_scroller import (apply_scrollbars_to_graphics_view, 
+                                  toggle_graphics_view_scrollbar_theme)
 
 class DemoWindow(QMainWindow):
     def __init__(self):
@@ -242,7 +243,7 @@ class DemoWindow(QMainWindow):
                 label.setStyleSheet(f"color: {text_color};")
     
     def create_graphics_view_tab(self):
-        """Создает вкладку с демонстрацией QGraphicsView."""
+        """Создает вкладку с QGraphicsView"""
         tab = QWidget()
         layout = QVBoxLayout(tab)
         
@@ -255,11 +256,9 @@ class DemoWindow(QMainWindow):
         scene.setSceneRect(0, 0, 2000, 2000)
         
         # Сохраняем ссылки для управления
+        self.graphics_view = graphics_view
         self.graphics_scene = scene
         self._is_large_grid = True
-        
-        # Добавляем элементы на сцену (прямоугольники со светлой заливкой и темной границей)
-        self._add_rectangles_to_scene()
         
         # Применяем прозрачные скроллбары к QGraphicsView
         vsb, hsb = apply_scrollbars_to_graphics_view(
@@ -269,9 +268,15 @@ class DemoWindow(QMainWindow):
             hover_alpha=150,
             pressed_alpha=200,
             scroll_bar_width=15,
-            use_dark_theme=True,
+            use_dark_theme=False,
             auto_hide=True
         )
+
+        # Добавляем элементы на сцену (прямоугольники со светлой заливкой и темной границей)
+        self._add_rectangles_to_scene()
+        
+        # Устанавливаем темный фон для QGraphicsView
+        # graphics_view.setStyleSheet("background-color: #2b2b2b;")
         
         # Добавляем кнопку для изменения размера сетки
         grid_btn = QLabel("Нажмите для изменения размера сетки")
@@ -280,6 +285,14 @@ class DemoWindow(QMainWindow):
         grid_btn.setStyleSheet("background-color: #e0e0e0; padding: 10px; border-radius: 5px;")
         grid_btn.mousePressEvent = self.toggle_grid_size
         grid_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        # Добавляем кнопку для переключения темы скроллбаров
+        theme_btn = QLabel("Переключить тему скроллбаров")
+        theme_btn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        theme_btn.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        theme_btn.setStyleSheet("background-color: #e0e0e0; padding: 10px; border-radius: 5px;")
+        theme_btn.mousePressEvent = self.toggle_graphics_scrollbar_theme
+        theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         
         description = QLabel(
             "Демонстрация прозрачных скроллбаров для QGraphicsView.\n"
@@ -290,6 +303,7 @@ class DemoWindow(QMainWindow):
         
         layout.addWidget(description)
         layout.addWidget(grid_btn)
+        layout.addWidget(theme_btn)
         layout.addWidget(graphics_view)
         
         return tab
@@ -300,29 +314,64 @@ class DemoWindow(QMainWindow):
         self.graphics_scene.clear()
         
         # Определяем размер сетки
-        grid_size = 10 if self._is_large_grid else 2
+        grid_size = 2 if not self._is_large_grid else 10
         
-        # Изменяем размер сцены в зависимости от размера сетки
-        scene_size = grid_size * 200  # 200 - размер ячейки (190 + 10 отступ)
+        # Определяем размер сцены
+        scene_size = grid_size * 200
+        
+        # Устанавливаем размер сцены
         self.graphics_scene.setSceneRect(0, 0, scene_size, scene_size)
         
-        # Добавляем элементы на сцену
+        # Получаем текущую тему
+        is_dark = self.graphics_view.property("using_dark_theme") if hasattr(self, 'graphics_view') else False
+        
+        # Определяем цвета в зависимости от темы
+        if is_dark:
+            fill_color = QColor(20, 20, 20, 30)  # Очень темный фон
+            border_color = QColor(200, 200, 200, 255)  # Светлая граница
+            # Устанавливаем темный фон для QGraphicsView
+            self.graphics_view.setStyleSheet("background-color: #2b2b2b;")
+        else:
+            fill_color = QColor(200, 200, 200, 30)  # Светлый фон
+            border_color = QColor(40, 40, 40, 255)  # Темная граница
+            # Устанавливаем светлый фон для QGraphicsView
+            self.graphics_view.setStyleSheet("background-color: #f0f0f0;")
+        
+        # Создаем кисть и перо
+        brush = QBrush(fill_color)
+        pen = QPen(border_color, 2)
+        
+        # Добавляем прямоугольники
         for i in range(grid_size):
             for j in range(grid_size):
-                # Создаем светлый цвет для заливки
-                fill_color = QColor(240, 240, 240)
-                # Создаем темный цвет для границы
-                border_color = QColor(40, 40, 40)
-                # Создаем перо толщиной 5 пикселей
-                pen = QPen(border_color, 5, Qt.PenStyle.SolidLine)
-                self.graphics_scene.addRect(i * 200, j * 200, 190, 190, 
-                                         pen=pen,
-                                         brush=QBrush(fill_color))
+                rect = self.graphics_scene.addRect(
+                    j * 200, i * 200, 190, 190,
+                    pen, brush
+                )
     
     def toggle_grid_size(self, event):
         """Переключение размера сетки прямоугольников"""
         self._is_large_grid = not self._is_large_grid
         self._add_rectangles_to_scene()
+    
+    def toggle_graphics_scrollbar_theme(self, event):
+        """Переключение темы скроллбаров QGraphicsView"""
+        if hasattr(self, 'graphics_view'):
+            from graphics_view_scroller import toggle_graphics_view_scrollbar_theme
+            # Инвертируем текущую тему
+            is_dark = self.graphics_view.property("using_dark_theme")
+            new_theme = not is_dark if is_dark is not None else True
+            # Применяем новую тему
+            toggle_graphics_view_scrollbar_theme(self.graphics_view, new_theme)
+            # Сохраняем информацию о текущей теме
+            self.graphics_view.setProperty("using_dark_theme", new_theme)
+            
+            # Обновляем цвета квадратов
+            if hasattr(self, 'graphics_scene'):
+                # Очищаем сцену
+                self.graphics_scene.clear()
+                # Добавляем квадраты с новыми цветами
+                self._add_rectangles_to_scene()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
