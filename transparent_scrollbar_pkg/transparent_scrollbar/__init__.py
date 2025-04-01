@@ -24,7 +24,9 @@ from .graphics_view_scroller import (
     GraphicsViewVerticalScrollBar,
     GraphicsViewHorizontalScrollBar,
     GraphicsViewScrollManager,
-    apply_scrollbars_to_graphics_view
+    GraphicsViewScrollBarThemeManager,
+    apply_scrollbars_to_graphics_view,
+    toggle_graphics_view_scrollbar_theme
 )
 
 __all__ = [
@@ -43,7 +45,9 @@ __all__ = [
     'GraphicsViewVerticalScrollBar',
     'GraphicsViewHorizontalScrollBar',
     'GraphicsViewScrollManager',
-    'apply_scrollbars_to_graphics_view'
+    'GraphicsViewScrollBarThemeManager',
+    'apply_scrollbars_to_graphics_view',
+    'toggle_graphics_view_scrollbar_theme'
 ]
 
-__version__ = '0.1.0' 
+__version__ = '0.5.0' 
