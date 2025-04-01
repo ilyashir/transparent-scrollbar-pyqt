@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QScrollBar, QGraphicsView
-from PyQt6.QtCore import Qt, QRect, pyqtProperty, QTimer, QObject
+from PyQt6.QtCore import Qt, QRect, pyqtProperty, QTimer, QObject, QPropertyAnimation
 from PyQt6.QtGui import QPainter, QColor
 
 class GraphicsViewScrollBar(QScrollBar):
@@ -89,7 +89,6 @@ class GraphicsViewScrollBar(QScrollBar):
         
         # Устанавливаем родителем GraphicsView
         self.setParent(view)
-        self.show()
         
         # Размещаем скроллбар в правильном месте
         self._update_geometry()
@@ -99,6 +98,9 @@ class GraphicsViewScrollBar(QScrollBar):
         
         # Также отслеживаем события для viewport
         view.viewport().installEventFilter(self)
+        
+        # Проверяем необходимость скроллбара и показываем/скрываем его
+        self._update_visibility()
     
     def _on_view_destroyed(self):
         """Обработчик события уничтожения view"""
@@ -174,23 +176,27 @@ class GraphicsViewScrollBar(QScrollBar):
         if not self._view:
             return
             
-        view_rect = self._view.rect()
+        viewport = self._view.viewport()
+        if not viewport:
+            return
+            
+        viewport_rect = viewport.rect()
         scroll_size = self.width() if self._orientation == Qt.Orientation.Vertical else self.height()
         
         if self._orientation == Qt.Orientation.Vertical:
             # Вертикальный скроллбар справа
             self.setGeometry(
-                view_rect.right() - scroll_size,
-                0,
+                viewport_rect.right() - scroll_size,
+                viewport_rect.top(),
                 scroll_size,
-                view_rect.height()
+                viewport_rect.height()
             )
         else:
             # Горизонтальный скроллбар внизу
             self.setGeometry(
-                0,
-                view_rect.bottom() - scroll_size,
-                view_rect.width(),
+                viewport_rect.left(),
+                viewport_rect.bottom() - scroll_size,
+                viewport_rect.width(),
                 scroll_size
             )
     
@@ -206,6 +212,7 @@ class GraphicsViewScrollBar(QScrollBar):
                 # При изменении размера GraphicsView обновляем геометрию скроллбара
                 if event.type() == event.Type.Resize:
                     QTimer.singleShot(0, self._update_geometry)
+                    QTimer.singleShot(0, self._update_visibility)  # Добавляем обновление видимости
                 # Реагируем на вход курсора в область GraphicsView
                 elif event.type() == event.Type.Enter and self._auto_hide:
                     self.show_scrollbar()
@@ -228,6 +235,9 @@ class GraphicsViewScrollBar(QScrollBar):
                 # Также показываем скроллбары при движении мыши над viewport
                 elif event.type() == event.Type.MouseMove and self._auto_hide:
                     self.show_scrollbar()
+                # Обновляем видимость при изменении размера viewport
+                elif event.type() == event.Type.Resize:
+                    QTimer.singleShot(0, self._update_visibility)
         except RuntimeError:
             # Если объект был удален, отключаем фильтр событий
             self._view_deleted = True
@@ -385,6 +395,13 @@ class GraphicsViewScrollBar(QScrollBar):
         if not hasattr(self, '_hide_timer'):
             return
             
+        # Проверяем необходимость скроллбара перед показом
+        self._update_visibility()
+        
+        # Если скроллбар не нужен, не показываем его
+        if not self.isVisible():
+            return
+            
         # Останавливаем таймер и анимацию скрытия
         self._hide_timer.stop()
         if self._hide_animation.state() == self._hide_animation.State.Running:
@@ -412,6 +429,41 @@ class GraphicsViewScrollBar(QScrollBar):
         if current_opacity > 0.0:
             self._hide_animation.setStartValue(current_opacity)
             self._hide_animation.start()
+    
+    def _update_visibility(self):
+        """Обновление видимости скроллбара"""
+        if not self._view or not self._native_scrollbar:
+            return
+
+        # Получаем размеры сцены и viewport
+        scene_rect = self._view.scene().sceneRect()
+        viewport_rect = self._view.viewport().rect()
+        
+        # Получаем матрицу преобразования для учета масштабирования
+        transform = self._view.transform()
+        
+        # Применяем преобразование к размерам сцены
+        mapped_rect = transform.mapRect(scene_rect)
+        
+        # Проверяем, нужен ли скроллбар с учетом масштабирования
+        if self._orientation == Qt.Orientation.Horizontal:
+            is_needed = mapped_rect.width() > viewport_rect.width()
+        else:
+            is_needed = mapped_rect.height() > viewport_rect.height()
+
+        if is_needed:
+            if not self.isVisible():
+                self.show()
+        else:
+            if self.isVisible():
+                self.hide()
+
+    def resizeEvent(self, event):
+        """Обработка изменения размера виджета"""
+        super().resizeEvent(event)
+        if self._view:
+            self._update_geometry()
+            self._update_visibility()
 
 
 class GraphicsViewVerticalScrollBar(GraphicsViewScrollBar):
@@ -495,8 +547,15 @@ class GraphicsViewScrollManager(QObject):
     def _showScrollbars(self):
         """Показывает оба скроллбара"""
         try:
-            self.vsb.show_scrollbar()
-            self.hsb.show_scrollbar()
+            # Проверяем необходимость скроллбаров перед показом
+            self.vsb._update_visibility()
+            self.hsb._update_visibility()
+            
+            # Показываем только те скроллбары, которые нужны
+            if self.vsb.isVisible():
+                self.vsb.show_scrollbar()
+            if self.hsb.isVisible():
+                self.hsb.show_scrollbar()
         except RuntimeError:
             # Игнорируем ошибки при доступе к удаленным объектам
             pass
